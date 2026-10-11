@@ -19,3 +19,4 @@ format:
 
 clean:
 	rm -rf $(BUILD)
+include games/games.mk
