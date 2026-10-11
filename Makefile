@@ -11,7 +11,7 @@ HOST_CC ?= cc
 CORE := src/zmem.c src/ztext.c src/zobj.c src/zexec.c src/launcher.c
 HDRS := $(wildcard src/*.h)
 
-.PHONY: all host kim demo test format clean bench
+.PHONY: all host kim kimdos demo test format clean bench
 all: host
 
 format:
@@ -86,6 +86,13 @@ VT100 ?= 1
 KIMTAPE ?= kimtape
 
 kim: $(BUILD)/kimformer.bin $(BUILD)/kimformer.ptp $(BUILD)/kimformer.prg
+
+# The KIMDOS shell at $$0400, below the interpreter, to load it from the SD card.
+kimdos: $(BUILD)/kimdos-0400.ptp
+
+$(BUILD)/kimdos-0400.ptp: $(wildcard extern/kimdos/asm/*/*)
+	$(MAKE) -C extern/kimdos ORG=0400 BUILD=$(abspath $(BUILD))/kimdos
+	cp $(BUILD)/kimdos/kimdos-0400.bin $(BUILD)/kimdos/kimdos-0400.ptp $(BUILD)/
 
 $(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)
 	@mkdir -p $(@D)

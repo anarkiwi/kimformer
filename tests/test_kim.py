@@ -249,3 +249,25 @@ def test_by_line(tmp_path):
     pcs = {0x2000: 5, 0x2001: 7}
     counts = prof.by_line(pcs, tmp_path / "x.elf", addr2line=fake)
     assert counts == {"f0x2000 x.c:1": 5, "f0x2001 x.c:1": 7}
+
+
+def test_bootstrap_from_disk(image, stories):
+    """KIMDOS at $0400 loads KIMFORMER from the card; 2000 G starts it."""
+    shell = REPO / "build" / "kimdos-0400.bin"
+    if not shell.exists():
+        pytest.fail(f"{shell} missing: run make kimdos")
+    prg = (REPO / "build" / "kimformer.prg").read_bytes()
+    machine = Machine({**stories, b"KIMFORMER": prg}, image=image, timer=0x5A)
+    machine.kim.write(sim.ORG, bytes(len(prg) - 2))
+    machine.kim.write(0x0400, shell.read_bytes())
+    machine.kim.mpu.pc = 0x0400
+    assert machine.run().endswith(">")
+    assert "$2000-$%04X" % (sim.ORG + len(prg) - 3) in machine.send("L KIMFORMER")
+    machine.send("Q")
+    assert machine.reason == MONITOR
+    assert machine.kim.read(sim.ORG, len(prg) - 2) == prg[2:]
+    machine.zp = machine.kim.read(sim.MONITOR_ZP.start, len(sim.MONITOR_ZP))
+    machine.kim.mpu.pc = sim.ORG
+    assert machine.run().endswith(MENU)
+    play(machine, [("1", "Meadow")])
+    check(machine)

@@ -36,13 +36,14 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - run: make kim
+      - run: sudo apt-get install -y cc65
+      - run: make kim kimdos
       - run: make kim VT100=0 BUILD=build/plain
       - run: make demo
       - name: attach
         run: |
           mkdir -p release
-          cp build/kimformer.ptp build/kimformer.prg build/demo.z3 release/
+          cp build/kimformer.ptp build/kimformer.prg build/kimdos-0400.ptp build/demo.z3 release/
           cp build/plain/kimformer.ptp release/kimformer-tty.ptp
           cp build/plain/kimformer.prg release/kimformer-tty.prg
           gh release upload "$TAG" release/* --clobber
