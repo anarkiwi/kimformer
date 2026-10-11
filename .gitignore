@@ -1,0 +1,13 @@
+__pycache__/
+*.egg-info/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+build/
+logs/
+tests/fixtures/cache/
+*.gcda
+*.gcno
+.wt/
+.claude/worktrees/
