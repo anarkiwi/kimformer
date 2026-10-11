@@ -28,11 +28,11 @@ one of two ways and pick a story from the menu.
 From paper tape (no SD card copy needed):
 
 ```
-kimtape load --port /dev/ttyUSB0 kimformer.ptp --go 2000
+kimtape load --port /dev/ttyUSB0 https://github.com/anarkiwi/kimformer/releases/latest/download/kimformer.ptp --go 2000
 ```
 
 From the SD card, bootstrapping the KIMDOS shell by paper tape: copy
-`kimformer.prg` to the card as `KIMFORMER.PRG`, then
+`kimformer.prg` (from the release) to the card as `KIMFORMER.PRG`, then
 
 ```
 kimtape load --port /dev/ttyUSB0 https://github.com/anarkiwi/kimdos/releases/latest/download/kimdos-0400.ptp --go 0400
