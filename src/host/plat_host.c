@@ -14,6 +14,7 @@
 uint8_t plat_arena[0x10000];
 uint8_t host_ram[256];
 int host_frames = -1;
+uint8_t plat_status_on;
 int host_seeded;
 uint16_t host_seed;
 

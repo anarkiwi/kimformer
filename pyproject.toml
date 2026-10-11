@@ -20,7 +20,6 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist",
-    "kimdos @ git+https://github.com/anarkiwi/kimdos",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,6 +28,7 @@ include = ["kimformer*"]
 [tool.pytest.ini_options]
 addopts = "-n auto --cov=kimformer --cov-report=term-missing"
 testpaths = ["tests"]
+markers = ["zork: Zork I on the simulated KIM-1 (slow; deselect with -m 'not zork')"]
 
 [tool.black]
 line-length = 88

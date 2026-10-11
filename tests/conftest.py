@@ -77,6 +77,13 @@ def fixture_probe(tmp_path_factory):
     return fixtures.compile_story(REPO / "tests" / "stories" / "probe.inf", out)
 
 
+@pytest.fixture(name="clock", scope="session")
+def fixture_clock(tmp_path_factory):
+    """The status line probe: a time game."""
+    out = tmp_path_factory.mktemp("clock") / "clock.z3"
+    return fixtures.compile_story(REPO / "tests" / "stories" / "clock.inf", out)
+
+
 @pytest.fixture(name="demo", scope="session")
 def fixture_demo(tmp_path_factory):
     """The demo adventure, compiled as games/games.mk does."""

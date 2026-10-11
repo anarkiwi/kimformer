@@ -1,16 +1,17 @@
 /* Host front end: zm [-w width] [-p pages] [-r lo-hi] [-s seed] [-d dir] [-t]
- * [story] */
+ * [-v] [story] */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../vt100.h"
 #include "../zint.h"
 #include "host.h"
 
 static int usage(void) {
   fputs("usage: zm [-w width] [-p pages] [-r lo-hi] [-s seed] [-d dir] [-t] "
-        "[story]\n",
+        "[-v] [story]\n",
         stderr);
   return 64;
 }
@@ -20,7 +21,7 @@ int main(int argc, char **argv) {
   unsigned lo, hi;
   const char *dir = ".";
   uint8_t r;
-  while ((c = getopt(argc, argv, "w:p:r:s:d:t")) != -1) {
+  while ((c = getopt(argc, argv, "w:p:r:s:d:tv")) != -1) {
     switch (c) {
     case 'w':
       w = atoi(optarg);
@@ -49,6 +50,9 @@ int main(int argc, char **argv) {
       zm_trace = 1;
 #endif
       break;
+    case 'v':
+      plat_status_on = 1;
+      break;
     default:
       return usage();
     }
@@ -59,6 +63,10 @@ int main(int argc, char **argv) {
   if (chdir(dir)) {
     perror(dir);
     return 66;
+  }
+  if (plat_status_on) {
+    vt100_open();
+    atexit(vt100_close);
   }
   if (optind < argc) {
     r = zm_load(argv[optind]);
