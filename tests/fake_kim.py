@@ -7,7 +7,7 @@ import termios
 import threading
 
 from kimdos.sim import INPUT, MONITOR
-from kimtape.tape import RECORD, Tape
+from kimtape.tape import Tape
 from kimformer.sim import Machine
 
 HEX = b"0123456789ABCDEF"
@@ -68,19 +68,25 @@ class FakeKim:
             self.prompt()
 
     def load(self):
-        """Store tape records until the end record."""
-        line = b""
+        """The ROM's L: skip to each ;, store the record, check its sum; a zero
+        count ends the tape with KIM, a bad sum leaves L with ERR."""
         while ch := self.getc():
-            if ch != b"\n":
-                line += ch
+            if ch != b";":
                 continue
-            record = RECORD.search(line)
-            line = b""
-            if record and record.group(1) == b"00":
+            head = self.hex_bytes(3)
+            data = self.hex_bytes(head[0])
+            got = self.hex_bytes(2)
+            if not head[0]:
+                os.write(self.fd, b"\x13 KIM\r\n\0\0\r\n\0\0KIM")
                 return
-            if record:
-                data = bytes.fromhex(record.group(3).decode())
-                self.machine.kim.write(int(record.group(2), 16), data)
+            self.machine.kim.write(int.from_bytes(head[1:], "big"), data)
+            if int.from_bytes(got, "big") != sum(head + data) & 0xFFFF:
+                os.write(self.fd, b"\x13 ERR\x13 KIM\r\n\0\0\r\n\0\0KIM")
+                return
+
+    def hex_bytes(self, n):
+        """n bytes read as hex digit pairs."""
+        return bytes.fromhex(b"".join(self.getc() for _ in range(2 * n)).decode())
 
     def punch(self):
         """Punch from the open address to the end address at EAL."""
