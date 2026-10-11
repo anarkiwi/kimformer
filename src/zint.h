@@ -36,6 +36,32 @@
 extern uint8_t zm_trace;
 #endif
 
+/* ZM_PAGE_DYN: dynamic memory beyond the pinned prefix (header, globals,
+ * object entries, plus ZM_PIN_EXTRA pages) shares the frame pool with static
+ * memory; a written page stays resident. */
+#ifndef ZM_PAGE_DYN
+#define ZM_PAGE_DYN 0
+#endif
+#ifndef ZM_PIN_EXTRA
+#define ZM_PIN_EXTRA 0
+#endif
+
+/* ZM_STATS: paging counters, reported by plat_stats before every read. */
+#ifdef ZM_STATS
+enum {
+  ZS_FRAMES,
+  ZS_PIN,
+  ZS_LOADS,
+  ZS_DIRTY,
+  ZS_MAXDIRTY,
+  ZS_SLOADS,
+  ZS_SWB,
+  ZS_N
+};
+extern uint32_t zstat[ZS_N];
+void plat_stats(void);
+#endif
+
 /* zmem.c */
 extern uint8_t page_map[512];
 extern uint8_t *dyn;
@@ -49,6 +75,17 @@ extern uint8_t str_off;
 extern uint8_t *pc_base ZP;
 extern uint8_t pc_off ZP;
 extern char story_name[17];
+#if ZM_PAGE_DYN
+extern uint16_t pin_base;
+extern uint8_t pin_pages, zm_pin_extra;
+#define ZD_LOAD 1
+#define ZD_DIRTY 2
+uint8_t zdpage(uint8_t p, uint8_t mode);
+uint8_t *zdynw(uint16_t a, uint16_t len);
+uint8_t *zscratch(void);
+#else
+#define pin_base static_base
+#endif
 
 void zfatal(uint8_t code);
 uint8_t zpage(uint16_t page);
@@ -66,6 +103,29 @@ void pc_rel(int16_t d);
 void str_set(uint16_t page, uint8_t off);
 uint8_t zreload(void);
 uint8_t zverify(void);
+#if ZM_PAGE_DYN
+#ifdef ZM_STATS
+void zs_ref(uint8_t p);
+#define ZS_REF(p) zs_ref(p)
+#else
+#define ZS_REF(p)
+#endif
+/* zb and zw with a resident page read inline, its used flag left alone. */
+INLINE uint8_t zbi(uint16_t a) {
+  uint8_t h = page_map[a >> 8];
+  ZS_REF(a >> 8);
+  return h ? PAGE_PTR(h)[(uint8_t)a] : zb(a);
+}
+INLINE uint16_t zwi(uint16_t a) {
+  uint8_t h = page_map[a >> 8], *q;
+  ZS_REF(a >> 8);
+  if (h && (uint8_t)a != 0xFF) {
+    q = PAGE_PTR(h) + (uint8_t)a;
+    return q[0] << 8 | q[1];
+  }
+  return zw(a);
+}
+#endif
 
 /* The byte at the PC; advances it. */
 INLINE uint8_t pc_byte(void) {

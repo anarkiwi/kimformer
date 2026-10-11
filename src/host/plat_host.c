@@ -8,7 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "../plat.h"
+#include "../zint.h"
 #include "host.h"
 
 uint8_t plat_arena[0x10000];
@@ -17,6 +17,8 @@ int host_frames = -1;
 uint8_t plat_status_on;
 int host_seeded;
 uint16_t host_seed;
+FILE *host_stats;
+static uint32_t seeks;
 
 static FILE *story, *save;
 static long story_pos;
@@ -60,6 +62,7 @@ uint8_t st_open(const char *name) {
 uint8_t st_seek(uint16_t page) {
   if (page != story_pos) {
     story_pos = page;
+    seeks++;
     return fseek(story, page * 256L, SEEK_SET) != 0;
   }
   return 0;
@@ -115,6 +118,18 @@ uint8_t dir_next(char *name) {
     return 0;
   strcpy(name, names[dpos++]->d_name);
   return 1;
+}
+
+/* One line per read: frames, pinned pages, page loads, dirty pages, most
+ * dirty pages, shadow loads and write-backs, story seeks (cumulative). */
+void plat_stats(void) {
+  uint8_t i;
+  if (!host_stats)
+    return;
+  for (i = 0; i < ZS_N; i++)
+    fprintf(host_stats, "%u ", (unsigned)zstat[i]);
+  fprintf(host_stats, "%u\n", (unsigned)seeks);
+  fflush(host_stats);
 }
 
 void plat_exit(void) { exit(0); }

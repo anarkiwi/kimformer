@@ -251,6 +251,25 @@ def test_bench(image, demo, tmp_path, capsys):
     assert loads[0] < loads[1]
 
 
+def test_entropy_seed():
+    for seed in (0, 16, 0xFFFF):
+        acc = prof.entropy_seed(seed)
+        for _ in range(2):
+            acc = (acc << 3 | acc >> 13) & 0xFFFF ^ prof.BENCH_TIMER
+        assert acc ^ prof.BENCH_TIMER << 8 == seed
+
+
+def test_bench_walk(image, demo, tmp_path, capsys):
+    story = tmp_path / "demo.z3"
+    story.write_bytes(demo.read_bytes())
+    moves = tmp_path / "demo.walk"
+    moves.write_text("# two moves\nlook\n\ninventory\n", encoding="ascii")
+    args = ["--bench", "--seed", "5", "--walk", str(moves), "--image", str(image)]
+    assert prof.main([*args, str(story)]) == 0
+    rows = [line.split()[0] for line in capsys.readouterr().out.splitlines()]
+    assert rows == ["load", "command", "look", "inventory", "total", "mean"]
+
+
 def test_by_line(tmp_path):
     fake = "sh -c 'while read a; do echo f$a; echo /src/x.c:1; done'"
     pcs = {0x2000: 5, 0x2001: 7}

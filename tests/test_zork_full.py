@@ -62,6 +62,18 @@ def test_zork_full_memory(runner, zork, args):
     assert " ".join(other.split()) == " ".join(full.split())
 
 
+def test_walk_stats(capsys, zork):
+    tool = ["--zm", str(ZM), "--story", str(zork), "--stats", str(SEED)]
+    assert walk.main([str(WALK), *tool, "--args", "-p 8"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("frames ") and " pinned " in lines[0]
+    assert int(lines[1].split()[1]) > 350
+    rates = {line.split()[0]: line.split() for line in lines[2:]}
+    assert set(rates) == {"loads", "seeks", "sloads", "swb"}
+    assert float(rates["loads"][1].split("/")[0]) > 1
+    assert walk.summary([(1,) * 8]).splitlines()[1] == "moves 1"
+
+
 def test_walk_seeds(capsys, tmp_path, zork):
     tool = ["--zm", str(ZM), "--story", str(zork)]
     assert walk.main([str(WALK), *tool, "--seeds", f"{SEED - 2}-{SEED + 2}"]) == 0

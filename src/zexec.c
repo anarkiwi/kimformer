@@ -238,12 +238,11 @@ static void zinit(void) {
   globals = zw(H_GLOBALS);
   obj_base = zw(H_OBJECTS) + 53;
   gmax = 15;
-  if (globals >= 32 && globals < static_base) {
+  if (globals >= 32 && globals < pin_base) {
     gv_lo = dyn + globals - 32;
     gv_hi = gv_lo + 0x100;
-    gmax = (static_base - globals) >> 1 > 240
-               ? 255
-               : 15 + ((static_base - globals) >> 1);
+    gmax = (pin_base - globals) >> 1 > 240 ? 255
+                                           : 15 + ((pin_base - globals) >> 1);
   }
 }
 
@@ -261,6 +260,27 @@ static void zstart(void) {
   zstreams_reset();
   pc_set(a >> 8, a);
 }
+
+#if ZM_PAGE_DYN
+/* The free part of the call stack if it holds 256 bytes, else 0. */
+uint8_t *zscratch(void) { return csp <= CS_BYTES - 0x100 ? cs + csp : 0; }
+
+/* Moves dynamic memory to or from the save file a page at a time: a page
+ * not resident is fetched from the story to save, mapped without loading to
+ * restore unless it is the last one and holds static memory too. */
+static void dyn_xfer(uint8_t save) {
+  uint8_t p;
+  uint16_t n = static_base;
+  for (p = 0; p < dyn_pages; p++, n -= 0x100)
+    sv_xfer(PAGE_PTR(zdpage(p, save        ? ZD_LOAD
+                               : n < 0x100 ? ZD_LOAD | ZD_DIRTY
+                                           : ZD_DIRTY)),
+            n > 0x100 ? 0x100 : n);
+}
+#define DYN_XFER(save) dyn_xfer(save)
+#else
+#define DYN_XFER(save) sv_xfer(dyn, static_base)
+#endif
 
 /* Moves the evaluation stack, the locals and the call stack to or from the
  * save file. */
@@ -299,7 +319,7 @@ static uint8_t zsave(uint8_t save) {
   sh.pc[2] = pc_off;
   if (save) {
     sv_xfer((uint8_t *)&sh, sizeof sh);
-    sv_xfer(dyn, static_base);
+    DYN_XFER(1);
     stack_xfer();
     return !sv_close();
   }
@@ -311,7 +331,7 @@ static uint8_t zsave(uint8_t save) {
     return 0;
   }
   f2 = dyn[H_FLAGS2 + 1] & 3;
-  sv_xfer(dyn, static_base);
+  DYN_XFER(0);
   csp = rh.csp;
   esp = rh.esp;
   esb = rh.esb;
@@ -384,11 +404,19 @@ static void exec(uint8_t code) {
     return;
   case OP2(15):
     r = A + (B << 1);
+#if ZM_PAGE_DYN
+    r = zwi(r);
+#else
     r = r < static_base - 1 ? dyn[r] << 8 | dyn[r + 1] : zw(r);
+#endif
     goto st;
   case OP2(16):
     r = A + B;
+#if ZM_PAGE_DYN
+    r = zbi(r);
+#else
     r = r < static_base ? dyn[r] : zb(r);
+#endif
     goto st;
   case OP2(17):
     r = prop_get(A, B);

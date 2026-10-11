@@ -11,7 +11,7 @@ static uint16_t oaddr(uint16_t o) {
 
 /* The object entry at a when it lies in dynamic memory, else 0. */
 static uint8_t *odyn(uint16_t a) {
-  return a < static_base && static_base - a >= 9 ? dyn + a : 0;
+  return a < pin_base && pin_base - a >= 9 ? dyn + a : 0;
 }
 
 uint8_t obj_rel(uint16_t o, uint8_t field) {

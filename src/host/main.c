@@ -1,5 +1,5 @@
 /* Host front end: zm [-w width] [-p pages] [-r lo-hi] [-s seed] [-d dir] [-t]
- * [-v] [story] */
+ * [-v] [-S file] [-P pages] [story] */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,7 @@
 
 static int usage(void) {
   fputs("usage: zm [-w width] [-p pages] [-r lo-hi] [-s seed] [-d dir] [-t] "
-        "[-v] [story]\n",
+        "[-v] [-S file] [-P pages] [story]\n",
         stderr);
   return 64;
 }
@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   unsigned lo, hi;
   const char *dir = ".";
   uint8_t r;
-  while ((c = getopt(argc, argv, "w:p:r:s:d:tv")) != -1) {
+  while ((c = getopt(argc, argv, "w:p:r:s:d:tvS:P:")) != -1) {
     switch (c) {
     case 'w':
       w = atoi(optarg);
@@ -52,6 +52,18 @@ int main(int argc, char **argv) {
       break;
     case 'v':
       plat_status_on = 1;
+      break;
+    case 'S':
+      host_stats = fopen(optarg, "w");
+      if (!host_stats) {
+        perror(optarg);
+        return 66;
+      }
+      break;
+    case 'P':
+#if ZM_PAGE_DYN
+      zm_pin_extra = atoi(optarg);
+#endif
       break;
     default:
       return usage();

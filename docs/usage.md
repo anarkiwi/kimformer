@@ -218,5 +218,9 @@ takes about 1.0M cycles of interpreter time per Zork I move (release 88,
 nine opening moves in VICE, page loads excluded; about 0.9M without the C64's
 interrupt and video overhead).
 
+Paging dynamic memory with static memory (`PAGEDYN=1`, an experiment toward
+v5) costs under 1% of interpreter time per move and 2 pages of image on Zork I;
+see [paging.md](paging.md) for the measurements and the recommendation.
+
 The status line is about 85 characters a move, 0.7 s at 1200 baud; a faster
 terminal line or `VT100=0` saves most of that.

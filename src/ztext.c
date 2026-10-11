@@ -261,21 +261,40 @@ static uint16_t lookup(const uint8_t *s, uint8_t len) {
 }
 
 void zsread(uint16_t text, uint16_t parse) {
-  uint8_t *t, *p, max = zb(text), maxw = zb(parse), i, s, c, nw = 0;
+  uint8_t *t, max = zb(text), maxw = zb(parse), i, s, c, nw = 0;
   uint16_t e;
+#if ZM_PAGE_DYN
+  uint8_t *b;
+  zdyn(text, max + 1);
+  zdyn(parse, 2 + (maxw << 2));
+#else
+  uint8_t *p;
   t = zdyn(text, max + 1);
   p = zdyn(parse, 2 + (maxw << 2));
+#endif
   if (!ZRUNNING)
     return;
   if (PLAT_STATUS) {
     zflush();
     zstatus();
   }
+#ifdef ZM_STATS
+  plat_stats();
+#endif
+#if ZM_PAGE_DYN
+  t = b = zdynw(text, max + 1);
+  if (!b && !(t = zscratch()))
+    t = PAGE_PTR(str_hi = zframe());
+#endif
   i = max ? zreadline(t + 1, max - 1) : 0;
   t[i + 1] = 0;
   for (i = 1; (c = t[i]); i++)
     if (c >= 'A' && c <= 'Z')
       t[i] = c + 32;
+#if ZM_PAGE_DYN
+  for (s = 0; !b && s < i; s++)
+    zsb(text + 1 + s, t[1 + s]);
+#endif
   dict = zw(H_DICT);
   nseps = zb(dict);
   dict_seps = dict + 1;
@@ -290,15 +309,25 @@ void zsread(uint16_t text, uint16_t parse) {
         i++;
     if (nw < maxw) {
       e = lookup(t + s, i - s);
+#if ZM_PAGE_DYN
+      zsw(parse + 2 + (nw << 2), e);
+      zsb(parse + 4 + (nw << 2), i - s);
+      zsb(parse + 5 + (nw << 2), s);
+#else
       p += 4;
       p[-2] = e >> 8;
       p[-1] = e;
       p[0] = i - s;
       p[1] = s;
+#endif
       nw++;
     }
   }
+#if ZM_PAGE_DYN
+  zsb(parse + 1, nw);
+#else
   zdyn(parse, 2)[1] = nw;
+#endif
 }
 
 void zstream(int16_t n, uint16_t table) {
