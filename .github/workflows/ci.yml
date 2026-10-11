@@ -24,3 +24,29 @@ jobs:
         run: black --check --diff kimformer tests
       - name: pylint
         run: pylint kimformer tests
+
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - uses: actions/cache@v4
+        with:
+          path: tests/fixtures/cache
+          key: fixtures-${{ hashFiles('kimformer/fixtures.py') }}
+      - run: make fixtures
+      - run: make host cov
+      - name: tests
+        run: make test PYTEST_ARGS=--cov-fail-under=85
+      - name: C coverage
+        run: make coverage
+
+  mos-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
+      - run: make mos-check
