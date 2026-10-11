@@ -9,37 +9,44 @@ uint16_t static_base;
 uint8_t dyn_pages;
 uint8_t zstate;
 uint8_t pc_hi, str_hi;
-uint16_t pc_page, str_page;
-uint8_t pc_off, str_off;
+uint16_t pc_page ZP, str_page;
+uint8_t str_off;
+uint8_t *pc_base ZP;
+uint8_t pc_off ZP;
 char story_name[17];
+uint16_t story_pages;
 
 static uint8_t frames[255];
-static uint8_t nframes;
+static uint8_t nframes, hand;
 static uint8_t dyn_hi;
 static uint8_t story_open;
-static uint16_t story_pages;
-static uint16_t lru_clock;
-static uint8_t own_lo[256], own_hi[256], st_lo[256], st_hi[256];
+static uint8_t own_lo[256], own_hi[256], used[256];
+static uint8_t data_page, data_hi;
 
 void zfatal(uint8_t code) {
-  if (zstate == ZS_RUN)
+  if (ZRUNNING)
     zstate = code;
 }
 
-static uint8_t victim(void) {
-  uint8_t i, h, best = 0;
-  uint16_t m = 0xFFFF, t;
-  for (i = 0; i < nframes; i++) {
-    h = frames[i];
-    t = (uint16_t)st_hi[h] << 8 | st_lo[h];
-    if (h != pc_hi && h != str_hi && t <= m) {
-      m = t;
-      best = h;
-    }
+uint8_t zframe(void) {
+  uint16_t p;
+  uint8_t h;
+  for (;;) {
+    h = frames[hand];
+    if (++hand == nframes)
+      hand = 0;
+    if (h == pc_hi || h == str_hi)
+      continue;
+    if (!used[h])
+      break;
+    used[h] = 0;
   }
-  page_map[(uint16_t)own_hi[best] << 8 | own_lo[best]] = 0;
-  own_lo[best] = own_hi[best] = 0;
-  return best;
+  if (h == data_hi)
+    data_hi = 0;
+  p = (uint16_t)own_hi[h] << 8 | own_lo[h];
+  if (page_map[p] == h)
+    page_map[p] = 0;
+  return h;
 }
 
 uint8_t zpage(uint16_t p) {
@@ -50,27 +57,26 @@ uint8_t zpage(uint16_t p) {
   }
   h = page_map[p];
   if (!h) {
-    h = victim();
+    h = zframe();
     st_seek(p);
     st_next(PAGE_PTR(h));
     page_map[p] = h;
     own_lo[h] = p;
     own_hi[h] = p >> 8;
   }
-  if (!++lru_clock) {
-    memset(st_lo, 0, sizeof st_lo);
-    memset(st_hi, 0, sizeof st_hi);
-    lru_clock = 1;
-  }
-  st_lo[h] = lru_clock;
-  st_hi[h] = lru_clock >> 8;
+  used[h] = 1;
   return h;
 }
 
 uint8_t zb(uint16_t a) {
+  uint8_t p = a >> 8;
   if (a < static_base)
     return dyn[a];
-  return PAGE_PTR(zpage(a >> 8))[(uint8_t)a];
+  if (p != data_page || !data_hi) {
+    data_hi = zpage(p);
+    data_page = p;
+  }
+  return PAGE_PTR(data_hi)[(uint8_t)a];
 }
 
 uint16_t zw(uint16_t a) {
@@ -87,30 +93,57 @@ NOINLINE uint8_t *zdyn(uint16_t a, uint16_t len) {
   return dyn + a;
 }
 
-NOINLINE void zsb(uint16_t a, uint8_t v) { *zdyn(a, 1) = v; }
-
-NOINLINE void zsw(uint16_t a, uint16_t v) {
-  uint8_t *p = zdyn(a, 2);
-  p[0] = v >> 8;
-  p[1] = v;
+NOINLINE void zsb(uint16_t a, uint8_t v) {
+  if (a < static_base)
+    dyn[a] = v;
+  else
+    zfatal(ZM_ERR_ADDRESS);
 }
 
-uint8_t pc_byte(void) {
-  uint8_t b;
-  if (!pc_hi)
+NOINLINE void zsw(uint16_t a, uint16_t v) {
+  if (a < static_base - 1) {
+    dyn[a] = v >> 8;
+    dyn[a + 1] = v;
+  } else
+    zfatal(ZM_ERR_ADDRESS);
+}
+
+NOINLINE uint16_t umul(uint16_t a, uint16_t b) {
+  uint16_t r = 0;
+  for (; b; b >>= 1, a <<= 1)
+    if (b & 1)
+      r += a;
+  return r;
+}
+
+void pc_load(void) {
+  if (pc_page < story_pages)
     pc_hi = zpage(pc_page);
-  b = PAGE_PTR(pc_hi)[pc_off];
-  if (!++pc_off) {
-    pc_page++;
-    pc_hi = 0;
+  else {
+    pc_hi = dyn_hi;
+    if (zstate == ZS_RUN)
+      zstate = ZS_PAST;
   }
-  return b;
+  pc_base = PAGE_PTR(pc_hi);
+}
+
+NOINLINE void pc_next(void) {
+  pc_page++;
+  pc_load();
 }
 
 void pc_set(uint16_t page, uint8_t off) {
-  pc_page = page & 0x1FF;
+  page &= 0x1FF;
   pc_off = off;
-  pc_hi = 0;
+  if (page != pc_page) {
+    pc_page = page;
+    pc_load();
+  }
+}
+
+NOINLINE uint16_t pc_word_slow(void) {
+  uint8_t b = pc_byte();
+  return b << 8 | pc_byte();
 }
 
 NOINLINE void pc_rel(int16_t d) {
@@ -152,7 +185,7 @@ uint8_t zreload(void) {
 }
 
 uint8_t zverify(void) {
-  uint8_t *b = PAGE_PTR(victim());
+  uint8_t *b = PAGE_PTR(zframe());
   uint16_t len = zw(H_LENGTH), p, sum = 0;
   uint16_t pages = len >> 7;
   uint8_t rem = len << 1, i;
@@ -220,9 +253,9 @@ uint8_t zm_load(const char *name) {
   memset(page_map, 0, sizeof page_map);
   memset(own_lo, 0, sizeof own_lo);
   memset(own_hi, 0, sizeof own_hi);
-  memset(st_lo, 0, sizeof st_lo);
-  memset(st_hi, 0, sizeof st_hi);
-  pc_hi = str_hi = 0;
+  memset(used, 0, sizeof used);
+  pc_hi = str_hi = hand = data_hi = 0;
+  pc_page = 0xFFFF;
   for (i = 0; i < dyn_pages; i++)
     page_map[i] = dyn_hi + i;
   zdots(0);

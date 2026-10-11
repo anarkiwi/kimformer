@@ -20,7 +20,8 @@ pip install -e extern/kimdos -e ".[dev]"
 | `make test` | pytest (`-n auto`) against `build/cov/zm`; `PYTEST_ARGS` passes options |
 | `make coverage` | gcovr summary of the C sources; fails under 85% |
 | `make kim` | the KIM-1 image: `build/kimformer.{bin,elf,map,sym,ptp,prg}`; `VT100=0` for a plain TTY |
-| `make mos-check` | links the core with `src/stub/` for the 6502 (`-Os -flto`), prints sizes, fails above `MOS_TEXT_MAX` |
+| `make mos-check` | links the core with `src/stub/` for the 6502 (`MOS_CFLAGS`), prints sizes, fails above `MOS_TEXT_MAX` |
+| `make bench` | interpreter cycles per Zork I move on the simulated KIM-1 (after `make kim`) |
 | `make format` | clang-format (LLVM style) over `src/` |
 
 ## Host interpreter
@@ -78,19 +79,29 @@ holding the given files under their upper-case names. `run()` and
 VT100 sequences removed; status lines collect in `status`, story seeks in
 `seeks`, and `cycles` counts CPU cycles (microseconds at 1 MHz). `timer=`
 fixes the RIOT timer, the entropy source, so runs of different length play
-alike; `char_cycles=0` leaves out the TTY's character time.
+alike; `char_cycles=0` leaves out the TTY's character time; `mirrors=`
+((start, end, base), ...) makes address ranges images of the RAM at base, as
+on a board with an undecoded address line.
 
 ```
 python -m kimformer.sim [--dir DIR] [--ram 0000-03FF,2000-AFFF] [--char-cycles N] [--cycles] [story...]
 ```
 
 plays interactively (stdin to the TTY, stdout from it, a cycle meter on
-stderr). `--dir` puts every file of DIR on the card and writes saved files
+stderr, drawn only while the transcript is at the start of a line). `--dir` puts every file of DIR on the card and writes saved files
 back; `--cycles` reports the cycles and story seeks of each input line.
 
 ```
-python -m kimformer.prof [--top N] [--image BIN] [--sym SYM] story command...
+python -m kimformer.prof [--top N] [--image BIN] [--sym SYM] [--ram R] [--lines] story command...
+python -m kimformer.prof --bench [--image BIN] [--ram R] [story [command...]]
 ```
 
 loads the story, then prints the CPU cycles spent per function (by the
-nearest symbol in `build/kimformer.sym`) while it runs the commands.
+nearest symbol in `build/kimformer.sym`) while it runs the commands; with
+`--lines`, per source line, from an image built with `-g`
+(`make kim BUILD=build/g MOS_CFLAGS="-Os -flto -mlto-zp=183 -g"`) through
+`llvm-addr2line` from the SDK image (`ADDR2LINE` overrides the command).
+`--bench` plays the commands (default: Zork I's opening, the cached fixture)
+with a fixed entropy source and prints per command the interpreter's cycles
+(without the time inside `st_seek`, `st_next` and the console calls), those
+I/O cycles and the story seeks.

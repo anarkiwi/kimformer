@@ -43,6 +43,8 @@ class Machine:
 
     stories: paths, or a mapping of drive names to contents.
     ram: inclusive (start, end) ranges that accept writes.
+    mirrors: (start, end, base) ranges that read and write the RAM at base,
+    as on a board that does not decode every address line.
     timer: a fixed value for the RIOT timer, the entropy source, so that runs
     with different timing play the same; None for the modelled timer.
     char_cycles: cycles per TTY character (0 to time the CPU alone).
@@ -56,12 +58,16 @@ class Machine:
         image=IMAGE,
         timer=None,
         char_cycles=CHAR_CYCLES,
+        mirrors=(),
         **drive,
     ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
         if not isinstance(stories, dict):
             stories = {drive_name(p): Path(p).read_bytes() for p in stories}
         self.drive = Drive(dict(stories), **drive)
+        ram = tuple(ram) + tuple((lo, hi) for lo, hi, _ in mirrors)
         self.kim = Kim(drives=self.drive, ram=ram, char_cycles=char_cycles)
+        for lo, hi, base in mirrors:
+            self.mirror(lo, hi, base)
         if timer is not None:
             self.kim.mem.subscribe_to_read([RIOT_TIMER], lambda _: timer)
         self.kim.write(0, random.Random(0).randbytes(0xFF00))
@@ -79,6 +85,14 @@ class Machine:
             execute(cmd)
 
         self.drive.execute = counted
+
+    def mirror(self, lo, hi, base):
+        """Make lo-hi (inclusive) an image of the RAM at base."""
+        mem, off = self.kim.mem, base - lo
+        sub = mem._subject  # pylint: disable=protected-access
+        addrs = range(lo, hi + 1)
+        mem.subscribe_to_read(addrs, lambda a: sub[a + off])
+        mem.subscribe_to_write(addrs, lambda a, v: sub.__setitem__(a + off, v))
 
     @property
     def cycles(self):
@@ -118,18 +132,41 @@ class Machine:
         return self.run(**kw)
 
 
+class Meter:
+    """A cycle meter on stderr that shares the terminal with the transcript:
+    it is drawn only on an empty line and erased before the next output."""
+
+    def __init__(self, write, file=None):
+        self.write = write
+        self.tqdm = tqdm(
+            unit="cyc", unit_scale=True, leave=False, file=file or sys.stderr
+        )
+        self.bol = True
+
+    def feed(self, text, cycles):
+        """Show output text, then count cycles."""
+        if text:
+            self.tqdm.clear()
+            self.write(text)
+            self.bol = text.endswith("\n")
+        self.tqdm.n += cycles
+        if self.bol:
+            self.tqdm.refresh()
+
+    def close(self):
+        """Erase the meter."""
+        self.tqdm.close()
+
+
 def play(machine, lines, write, report=None):
     """Run the machine interactively: lines yields input, write takes output,
     report (if given) takes the cycles and story seeks of each step."""
-    with tqdm(unit="cyc", unit_scale=True, leave=False, file=sys.stderr) as meter:
-
-        def progress(m, n):
-            write(m.output())
-            meter.update(n)
+    meter = Meter(write)
+    try:
 
         def step():
             cycles, seeks = machine.cycles, machine.seeks
-            machine.run(progress=progress)
+            machine.run(progress=lambda m, n: meter.feed(m.output(), n))
             if report:
                 report(machine.cycles - cycles, machine.seeks - seeks)
 
@@ -139,6 +176,8 @@ def play(machine, lines, write, report=None):
                 break
             machine.kim.type(line.rstrip("\r\n") + "\r")
             step()
+    finally:
+        meter.close()
     return machine.reason
 
 

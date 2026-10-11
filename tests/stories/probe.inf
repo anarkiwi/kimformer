@@ -112,6 +112,8 @@ Object Ball "red ball" Box with weight 7 8, label 'ball' 'red', has shiny;
       'nextprop': @get_next_prop Box 20 -> x;
       'static': x = 0-->7; @storeb x 0 0;
       'far': @loadb $ffff 0 -> x;
+      'beyond': @call $7fff -> x;
+      'flood': for (x = 0 : x < 300 : x++) @push x;
       'pull': NoLocals();
       'local': OneLocal();
       'deep': Deep(0);

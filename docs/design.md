@@ -37,7 +37,7 @@ PAL-II default switch settings give RAM at $0000-$13FF and $2000-$FFFF:
 | Range | Use |
 | --- | --- |
 | $0000-$001F | llvm-mos imaginary registers |
-| $0020-$00EE | llvm-mos zero page variables |
+| $0020-$00EE | zero page variables: the interpreter's hot state (`ZP` in `zint.h`), then the LTO allocator's (`-mlto-zp`) |
 | $00EF-$00FF | KIM-1 monitor |
 | $0100-$01FF | 6502 stack |
 | $0400-$13FF | page cache (if present) |
@@ -46,28 +46,33 @@ PAL-II default switch settings give RAM at $0000-$13FF and $2000-$FFFF:
 | image end-$FEFF | dynamic memory, then page cache |
 | $FF00-$FFFF | unused: the vector select switch overlays $FFFA-$FFFF with ROM |
 
-The KIM platform probes every candidate page (write/read back two patterns)
-so a board with less RAM still runs whatever fits.
+The KIM platform probes every candidate page so a board with less RAM still
+runs whatever fits, and skips mirrors on a board that does not decode every
+address line (see [KIM-1 platform](#kim-1-platform)).
 
 `zm_load` takes the longest ascending run of consecutive free pages that holds
 dynamic memory (header word $0E rounded up to a page) and loads story pages
 0..n-1 there. Every other free page is a cache frame.
 
 `page_map[512]` maps each story page (v3 stories are at most 128K) to the high
-byte of the RAM page holding it, 0 when absent. Dynamic pages are pinned. A
-miss evicts the least recently used frame (a 16-bit stamp per frame, kept as
-separate low/high byte arrays indexed by the RAM page, set on every lookup;
-stamps are reset when the counter wraps), never the page the PC or the current
-string is executing from, then calls `st_seek` + `st_next`. At least three
-frames are required.
+byte of the RAM page holding it, 0 when absent. Dynamic pages are pinned. Frames
+are replaced by the clock algorithm: every lookup sets the frame's used flag; a
+miss sweeps a hand over the frames, clearing used flags, to the first frame
+not used since the last sweep that is not the page the PC or the current string
+is executing from, then calls `st_seek` + `st_next`. At least three frames are
+required.
 
 After dynamic memory, `zm_load` keeps reading the story sequentially into free
 frames until they or the file run out: sequential reads need no seek. It prints
 a dot every 8 pages, then a line break.
 
-Byte reads below the static base go straight to dynamic memory. The PC and
-string decoder each keep their page's high byte; when the offset wraps they
-clear it and look the next page up on the following read.
+Byte reads below the static base go straight to dynamic memory; reads above it
+keep the last page looked up (dropped when its frame is replaced). The PC is a
+zero page pointer to its page plus an 8-bit offset, so a fetch is one indexed
+load; when the offset wraps the next page is looked up. A PC that runs past the
+story's last page stops with `ZM_ERR_ADDRESS` before the next instruction
+unless a jump has brought it back. The string decoder keeps its page's high
+byte, cleared when the offset wraps and looked up on the next read.
 
 Addresses are page (`uint16_t`) plus offset (`uint8_t`); no 32-bit arithmetic
 in the interpreter.
@@ -82,13 +87,26 @@ in the interpreter.
   `output_stream` 3 (memory, nested up to 16) is supported; 2 sets or clears
   the transcript bit (Flags 2 bit 0) only, as the console is the hardcopy;
   4 is ignored; `input_stream` is ignored.
-- Evaluation stack and call frames share one 1024-word Z-stack. A call pushes
-  the return PC page, the store variable and PC offset (high and low byte of
-  one word), and the caller's frame pointer with the callee's local count in
-  bits 12-15; the locals follow.
+- Variables and stacks are byte arrays indexed by 8-bit values, so each
+  access is one absolute indexed load per byte:
+  - the evaluation stack holds 255 words as separate low and high byte
+    arrays with an 8-bit stack pointer; each routine's part starts at its
+    base, below which a pull is `ZM_ERR_STACK`;
+  - the current routine's locals are fixed arrays indexed by the variable
+    number;
+  - a call pushes the caller's locals, its PC (page and offset), the store
+    variable, its stack base and local count onto a 1536-byte call stack
+    (`ZM_ERR_STACK` when full) and loads the callee's locals; a return pops
+    them;
+  - globals are read through two zero page pointers (variables 16-127 and
+    128-255) when the table lies in dynamic memory.
 - Opcodes are decoded into a dense 0-95 code (2OP, 1OP, 0OP, VAR) and
   dispatched by one `switch`; results go through shared store and branch
-  tails.
+  tails. The long form reads its two operand bytes as one word; the VAR
+  form's type byte is decoded unrolled; locals are read and stored inline.
+- Objects whose 9-byte entry lies in dynamic memory are accessed through a
+  pointer; `loadw`/`loadb` read dynamic memory inline. Multiplication (`mul`,
+  dictionary entries) is shift-and-add.
 - Output is buffered a word at a time and wrapped at `zm_width`; spaces are
   held back and dropped at a line break.
 - Fatal errors (`zm.h` codes) stop `zm_run` with `Error <code> at $<PC>`:
@@ -110,14 +128,17 @@ in the interpreter.
   `Score: S  Moves: M` from globals 1 and 2, or `Time: H:MM AM` (12-hour,
   spec 8.2.3.2) when Flags 1 bit 1 is set; both go to `plat_status`.
 - `random`: 16-bit xorshift (7, 9, 8), seeded from `plat_entropy` when
-  `zm_run` starts; random(0) reseeds from `plat_entropy`, random(-n) seeds with
-  n.
+  `zm_run` starts (0, which xorshift cannot use, becomes $ACE1); random(0)
+  reseeds the same way, random(-n) seeds with n.
 - `save`/`restore` prompt `File [NAME.SAV]: ` (default: the story name with its
-  extension replaced by `.SAV`) and write/read: magic `KZ3\1`, release (2),
+  extension replaced by `.SAV`) and write/read: magic `KZ3\2`, release (2),
   serial (6), checksum (2) as in the header, then little endian dynamic size
-  (2), stack pointer (2), frame pointer (2), then PC (3, big endian), dynamic
-  memory, used Z-stack words (little endian). Restore checks the first 16 bytes
-  against the loaded story; a short read after that is `ZM_ERR_OPEN`.
+  (2) and call stack size (2), evaluation stack pointer, routine stack base and
+  local count (1 each), then PC (3, big endian), dynamic memory, the low then
+  the high bytes of the used evaluation stack, the 16 low and 16 high local
+  bytes, the used call stack. Restore checks the first 16 bytes against the
+  loaded story and the sizes; a short read after that is `ZM_ERR_OPEN`. A
+  return through a corrupt frame is `ZM_ERR_STACK`.
 - `restart` reloads dynamic memory, preserving Flags 2 bits 0-1.
 - `verify` sums the file through a borrowed cache frame.
 - `quit` returns from `zm_run` to the launcher.
@@ -137,8 +158,13 @@ up to the page-aligned `__kim_end`.
   padded so the right text ends at `zm_width`, `ESC[0m`, `ESC 8`; exit
   resets the region (`ESC[r`) and moves to line 24.
 - RAM: `plat_pages` probes $04-$13 and `__kim_end`/256-$FE in ascending
-  order, writing and reading back $55 and $AA at offset 0 of each page and
-  restoring the byte.
+  order. At offset 0 of each page it inverts the byte, reads it back and
+  checks that the byte at offset 0 of each page whose number differs in one
+  bit did not change, then restores and reads back the byte. A board that
+  ignores an address line mirrors a page onto exactly such a neighbour, so a
+  mirror of the image, of RAM below it or of a lower candidate is skipped; a
+  higher candidate neighbour is not checked, as it is skipped itself when its
+  turn comes. Page $17 (I/O) is not compared.
 - Story: channel 2, opened with `<name>,P,R`. `st_seek` skips a seek to the
   current page, otherwise sends the sd2iec command `P` + chr($62) + 4-byte
   little-endian offset on channel 15 (as `kd_seek` does, but reading the
@@ -169,7 +195,7 @@ matches the suffix `.Z3` case-insensitively on that.
 | --- | --- |
 | `tests/test_host.py` | host build: CZECH compliance, the demo walkthrough, Zork I opening moves, save/restore, restart, small caches that force eviction, the probe story, load errors, launcher, status lines (`-v`) |
 | `tests/test_fixtures.py` | fixture download, verification and Inform compilation |
-| `tests/test_kim.py` | 6502 build on the KIMDOS py65 simulator (PAL-II RAM map) with the sd2iec drive model: launcher, re-run without reload, no drive, DOS errors, too little RAM, demo walkthrough, Zork I opening with save/restore and status lines, restore in a fresh session, a small-RAM run that evicts, the simulator CLI and profiler |
+| `tests/test_kim.py` | 6502 build on the KIMDOS py65 simulator (PAL-II RAM map) with the sd2iec drive model: launcher, re-run without reload, no drive, DOS errors, too little RAM, demo walkthrough, Zork I opening with save/restore and status lines, restore in a fresh session, a small-RAM run that evicts, RAM mirrored through an undecoded address line, the simulator CLI, cycle meter, profiler and benchmark |
 
 Fixtures that are not ours (CZECH, Zork I from historicalsource/zork1, the
 Inform 6 compiler source) are downloaded once into `tests/fixtures/cache/`

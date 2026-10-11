@@ -94,7 +94,7 @@ def test_zork_save_restore(runner, zork):
     assert out.count("Ok.") == 2
     assert "The brass lantern is now on." in out
     save = runner.dir / "zork1.SAV"
-    assert save.read_bytes()[:4] == b"KZ3\x01"
+    assert save.read_bytes()[:4] == b"KZ3\x02"
     fresh = flat(runner.run(story, commands=["restore", "", "look", "inventory"]))
     assert "Ok. >look Living Room" in fresh
     assert "A brass lantern" in fresh
@@ -201,9 +201,10 @@ def test_probe_random(runner, probe):
 
 def test_probe_seed(runner, probe):
     story = runner.add(probe)
-    rolls = [text(runner.run("-s", s, story, commands=["roll"])) for s in (2, 2, 4, 6)]
+    seeds = (2, 2, 3, 0, 1)
+    rolls = [text(runner.run("-s", s, story, commands=["roll"])) for s in seeds]
     assert rolls[0] == rolls[1]
-    assert len(set(rolls[1:])) == 3
+    assert len(set(rolls[1:])) == 4
 
 
 def test_probe_save_restore(runner, probe):
@@ -246,6 +247,8 @@ def test_probe_restore_truncated(runner, probe, cut):
         ("nextprop", ZM_ERR_OBJECT),
         ("static", ZM_ERR_ADDRESS),
         ("far", ZM_ERR_ADDRESS),
+        ("beyond", ZM_ERR_ADDRESS),
+        ("flood", ZM_ERR_STACK),
         ("pull", ZM_ERR_STACK),
         ("local", ZM_ERR_STACK),
         ("deep", ZM_ERR_STACK),

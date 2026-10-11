@@ -73,9 +73,9 @@ def play(machine, steps):
     return log
 
 
-def zork_run(image, stories, ram=sim.PAL2_RAM):
+def zork_run(image, stories, ram=sim.PAL2_RAM, **kw):
     """Pick Zork I from the menu and play the opening with a save and restore."""
-    machine = boot(image, stories, ram=ram)
+    machine = boot(image, stories, ram=ram, **kw)
     log = play(machine, [("2", "West of House")] + ZORK_SAVE + ZORK_QUIT)
     check(machine)
     return machine, log
@@ -143,7 +143,7 @@ def test_demo_walkthrough(image, stories):
     for command in script.splitlines():
         out += machine.send(command)
     assert walk.unmatched(expect.splitlines(), out.splitlines()) is None
-    assert machine.drive.files[b"demo.sav"][:4] == b"KZ3\x01"
+    assert machine.drive.files[b"demo.sav"][:4] == b"KZ3\x02"
     check(machine)
 
 
@@ -153,7 +153,7 @@ def test_zork_opening(zork_full):
     out = "".join(o for _, o, _ in log)
     assert "ZORK I: The Great Underground Empire" in out
     assert "Release 119 / Serial number 880429" in out
-    assert machine.drive.files[b"ZORK1.SAV"][:4] == b"KZ3\x01"
+    assert machine.drive.files[b"ZORK1.SAV"][:4] == b"KZ3\x02"
     assert machine.status[0] == status("West of House", "Score: 0  Moves: 0")
     assert machine.status[-2] == status("East of Chasm", "Score: 35  Moves: 15")
 
@@ -192,14 +192,14 @@ def test_cli(image, demo, tmp_path, monkeypatch, capsys):
     screen = sim.VT_STATUS.sub("", out.out)
     assert "1. DEMO.Z3" in screen and ">look\nMeadow\n" in screen
     assert "monitor after" in out.err
-    assert (tmp_path / "DEMO.SAV").read_bytes()[:4] == b"KZ3\x01"
+    assert (tmp_path / "DEMO.SAV").read_bytes()[:4] == b"KZ3\x02"
 
 
 def test_profile(image, demo, tmp_path, capsys):
     story = tmp_path / "demo.z3"
     story.write_bytes(demo.read_bytes())
     funcs = dict((n, a) for a, n in prof.functions(image.with_suffix(".sym")))
-    assert {"zpage", "pc_byte", "iec_acptr"} <= funcs.keys()
+    assert {"zpage", "var_get", "iec_acptr"} <= funcs.keys()
     assert min(funcs.values()) == sim.ORG
     assert prof.main(["--top", "5", "--image", str(image), str(story), "look"]) == 0
     lines = capsys.readouterr().out.splitlines()
@@ -207,3 +207,45 @@ def test_profile(image, demo, tmp_path, capsys):
     counts = [int(line.split()[0]) for line in lines]
     assert counts[:-1] == sorted(counts[:-1], reverse=True)
     assert 0 < sum(counts[:-1]) <= counts[-1]
+
+
+@pytest.mark.zork
+def test_zork_mirrored_ram(image, stories, zork_full):
+    """Upper RAM that mirrors the image through an undecoded A15 is not used."""
+    ram = ((0, 0x3FF), (0x1700, 0x17FF), (0x2000, 0xBFFF))
+    machine, log = zork_run(image, stories, ram, mirrors=((0xC000, 0xFEFF, 0x4000),))
+    assert [o for _, o, _ in log[1:]] == [o for _, o, _ in zork_full[1][1:]]
+    assert machine.seeks > zork_full[0].seeks
+
+
+def test_meter():
+    out, err = [], io.StringIO()
+    meter = sim.Meter(out.append, file=err)
+    meter.feed("", 10)
+    drawn = len(err.getvalue())
+    assert drawn
+    meter.feed("prompt>", 10)
+    after = len(err.getvalue())
+    meter.feed("", 5_000_000)
+    assert len(err.getvalue()) == after
+    meter.feed("line\n", 10)
+    assert len(err.getvalue()) > after
+    meter.close()
+    assert out == ["prompt>", "line\n"]
+
+
+def test_bench(image, demo, tmp_path, capsys):
+    story = tmp_path / "demo.z3"
+    story.write_bytes(demo.read_bytes())
+    assert prof.main(["--bench", "--image", str(image), str(story), "look"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == ["command", "interp", "io", "seeks"]
+    assert lines[1].split()[0] == "look" and int(lines[1].split()[1]) > 0
+    assert lines[-1].startswith("mean")
+
+
+def test_by_line(tmp_path):
+    fake = "sh -c 'while read a; do echo f$a; echo /src/x.c:1; done'"
+    pcs = {0x2000: 5, 0x2001: 7}
+    counts = prof.by_line(pcs, tmp_path / "x.elf", addr2line=fake)
+    assert counts == {"f0x2000 x.c:1": 5, "f0x2001 x.c:1": 7}

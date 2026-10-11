@@ -14,6 +14,7 @@
 #define RIOT_TIMER (*(volatile uint8_t *)0x1706)
 #define LOW_FIRST 0x04
 #define LOW_END 0x14
+#define IO_PAGE 0x17
 
 extern char __kim_end[];
 
@@ -44,25 +45,36 @@ uint8_t plat_getc(void) {
 
 uint16_t plat_entropy(void) { return seed ^ (uint16_t)RIOT_TIMER << 8; }
 
-static uint8_t is_ram(uint8_t hi) {
-  volatile uint8_t *p = PAGE_PTR(hi);
-  uint8_t old = *p, ok;
-  *p = 0x55;
-  ok = *p == 0x55;
-  *p = 0xAA;
-  ok &= *p == 0xAA;
+static uint8_t candidate(uint8_t h) {
+  return h >= LOW_FIRST &&
+         (h < LOW_END || (h >= (uint16_t)__kim_end >> 8 && h != 0xFF));
+}
+
+/* Page h holds what is written to it, and writing it changes no page whose
+ * number differs in one bit (a mirror through an undecoded address line),
+ * except a higher candidate, which is then the mirror of h. */
+static uint8_t is_ram(uint8_t h) {
+  volatile uint8_t *p = PAGE_PTR(h);
+  uint8_t was[8], old = *p, b, n, ok;
+  for (b = 0; b < 8; b++)
+    was[b] = *(volatile uint8_t *)PAGE_PTR(h ^ 1 << b);
+  *p = ~old;
+  ok = *p == (uint8_t)~old;
+  for (b = 0; b < 8; b++) {
+    n = h ^ 1 << b;
+    if (n != IO_PAGE && !(n > h && candidate(n)) &&
+        *(volatile uint8_t *)PAGE_PTR(n) != was[b])
+      ok = 0;
+  }
   *p = old;
-  return ok;
+  return ok && *p == old;
 }
 
 uint8_t plat_pages(uint8_t *hi, uint8_t max) {
   uint8_t n = 0, h = LOW_FIRST;
-  for (; n < max && h != 0xFF; h++) {
-    if (h == LOW_END)
-      h = (uint16_t)__kim_end >> 8;
-    if (is_ram(h))
+  for (; n < max && h != 0xFF; h++)
+    if (candidate(h) && is_ram(h))
       hi[n++] = h;
-  }
   return n;
 }
 
@@ -109,7 +121,8 @@ uint8_t st_seek(uint16_t page) {
   return dos_error();
 }
 
-uint16_t st_next(uint8_t *dst) {
+/* Kept out of line: kimformer.prof times story I/O by its calls. */
+__attribute__((noinline)) uint16_t st_next(uint8_t *dst) {
   uint16_t n = kd_read(CH_STORY, dst, 256);
   memset(dst + n, 0, 256 - n);
   st_page++;
