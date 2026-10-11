@@ -189,17 +189,27 @@ def main(argv=None):
     parser.add_argument(
         "--ram", type=ram_ranges, default=PAL2_RAM, help="e.g. 0000-03FF,2000-AFFF"
     )
+    parser.add_argument(
+        "--no-jiffy", action="store_true", help="a drive without JiffyDOS"
+    )
     parser.add_argument("story", type=Path, nargs="?")
     parser.add_argument("command", nargs="*")
     args = parser.parse_args(argv)
     sym = args.sym or args.image.with_suffix(".sym")
     story = args.story or fixtures.fetch("zork1.z3")
     machine = Machine(
-        [story], ram=args.ram, image=args.image, timer=BENCH_TIMER, char_cycles=0
+        [story],
+        ram=args.ram,
+        image=args.image,
+        timer=BENCH_TIMER,
+        char_cycles=0,
+        **({"jiffy": None} if args.no_jiffy else {}),
     )
     machine.run()
+    start = machine.cycles
     send(machine, "1")
     if args.bench:
+        print("%-16s %10d" % ("load", machine.cycles - start))
         bench(machine, sym, args.command or BENCH)
         return 0
     prof = Profile(machine)

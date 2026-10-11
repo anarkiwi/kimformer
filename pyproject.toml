@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "anarkiwi" }]
-dependencies = ["tqdm"]
+dependencies = ["kimdos>=0.2.0", "kimtape>=0.1.1", "tqdm"]
 
 [project.optional-dependencies]
 dev = [

@@ -21,7 +21,6 @@ through the KIMDOS adapter; the interpreter pages them in on demand.
 | `src/host/` | host platform: stdio console, files in a directory, simulated 64K arena, optional VT100 status line |
 | `src/stub/` | do-nothing platform for the 6502 link and size check |
 | `src/kim/` | KIM-1 platform: monitor TTY, KIMDOS C library, RAM probe |
-| `extern/kimdos` | KIMDOS (submodule): IEC/DOS library for llvm-mos, KIM-1 linker script |
 | `games/` | Inform 6 source of the demo adventure |
 | `kimformer/` | Python tooling: fixture fetching, KIM-1 simulator harness, cycle profiler |
 | `tests/` | pytest suites for the host build and the 6502 build |
@@ -146,7 +145,8 @@ in the interpreter.
 ## KIM-1 platform
 
 `src/kim/plat_kim.c`, linked with the KIMDOS C library sources and its KIM-1
-link script (`extern/kimdos/c/kim1/link.ld`): image at $2000, 1K soft stack
+link script (`kim1/link.ld`), from the kimdos Python package
+(`python -m kimdos.clib`): image at $2000, 1K soft stack
 up to the page-aligned `__kim_end`.
 
 - Console: `kd_putc`/`kd_getc` (the monitor's `OUTCH`/`GETCH`); `'\n'` is

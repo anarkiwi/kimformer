@@ -14,12 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e extern/kimdos -e ".[dev]"
+      - run: pip install -e ".[dev]"
       - name: black
         run: black --check --diff kimformer tests
       - name: pylint
@@ -29,12 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e extern/kimdos -e ".[dev]"
+      - run: pip install -e ".[dev]"
       - uses: actions/cache@v6
         with:
           path: tests/fixtures/cache
@@ -50,20 +46,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e extern/kimdos -e ".[dev]"
+      - run: pip install -e ".[dev]"
       - uses: actions/cache@v6
         with:
           path: tests/fixtures/cache
           key: fixtures-${{ hashFiles('kimformer/fixtures.py') }}
       - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
       - run: make fixtures
-      - run: sudo apt-get install -y cc65
-      - run: make kimdos
       - run: make kim
       - name: plain TTY build
         run: make kim VT100=0 BUILD=build/plain
@@ -82,7 +74,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
       - run: make mos-check

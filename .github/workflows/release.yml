@@ -21,12 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: recursive
           ref: ${{ env.TAG }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e extern/kimdos -e .
+      - run: pip install -e .
       - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
@@ -36,14 +35,13 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - run: sudo apt-get install -y cc65
-      - run: make kim kimdos
+      - run: make kim
       - run: make kim VT100=0 BUILD=build/plain
       - run: make demo
       - name: attach
         run: |
           mkdir -p release
-          cp build/kimformer.ptp build/kimformer.prg build/kimdos-0400.ptp build/demo.z3 release/
+          cp build/kimformer.ptp build/kimformer.prg build/demo.z3 release/
           cp build/plain/kimformer.ptp release/kimformer-tty.ptp
           cp build/plain/kimformer.prg release/kimformer-tty.prg
           gh release upload "$TAG" release/* --clobber
