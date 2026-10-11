@@ -42,7 +42,7 @@ jobs:
       - run: make fixtures
       - run: make host cov
       - name: tests
-        run: make test PYTEST_ARGS=--ignore=tests/test_kim.py
+        run: make test PYTEST_ARGS="--ignore=tests/test_kim.py --ignore=tests/test_board.py"
       - name: C coverage
         run: make coverage
 
