@@ -5,9 +5,11 @@ story on the simulated PAL-II, picks it from the menu, runs the commands and
 prints the cycles spent in each function (callees not included), or with
 ``--lines`` in each source line (from the image's .elf, built with ``-g``).
 
-``python -m kimformer.prof --bench [--ram R] [story [command...]]`` prints, for each
-command (default: the Zork I opening in ``BENCH``), the interpreter's cycles
-without the time spent in story I/O and on the console, and the story seeks.
+``python -m kimformer.prof --bench [--ram R] [--walk FILE] [--seed N] [story
+[command...]]`` prints, for each command (default: the Zork I opening in
+``BENCH``, or the commands of a walk file; ``--seed`` seeds the story's RNG as
+``zm -s`` does), the interpreter's cycles without the time spent in story I/O
+and on the console, and the story seeks.
 """
 
 import argparse
@@ -23,7 +25,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from kimdos.sim import INPUT
-from kimformer import fixtures
+from kimformer import fixtures, walk
 from kimformer.sim import IMAGE, PAL2_RAM, REPO, Machine, ram_ranges
 
 SYMBOL = re.compile(r"([0-9a-f]+) ([A-Za-z]) (\S+)")
@@ -141,6 +143,17 @@ def by_line(pcs, elf, addr2line=ADDR2LINE):
     return counts
 
 
+def entropy_seed(seed, timer=BENCH_TIMER, keys=2):
+    """The value of plat_kim's key-timing accumulator that makes
+    plat_entropy return seed after keys more key presses with the RIOT timer
+    fixed at timer (the menu choice is two: the digit and Enter)."""
+    s = seed ^ timer << 8
+    for _ in range(keys):
+        s ^= timer
+        s = (s >> 3 | s << 13) & 0xFFFF
+    return s
+
+
 def send(machine, command):
     """Type a command and run until input is awaited again."""
     out = machine.send(command, max_cycles=MOVE_CYCLES)
@@ -192,6 +205,8 @@ def main(argv=None):
     parser.add_argument(
         "--no-jiffy", action="store_true", help="a drive without JiffyDOS"
     )
+    parser.add_argument("--walk", type=Path, help="commands from a walk file")
+    parser.add_argument("--seed", type=int, help="story RNG seed, as zm -s")
     parser.add_argument("story", type=Path, nargs="?")
     parser.add_argument("command", nargs="*")
     args = parser.parse_args(argv)
@@ -206,11 +221,15 @@ def main(argv=None):
         **({"jiffy": None} if args.no_jiffy else {}),
     )
     machine.run()
+    if args.seed is not None:
+        acc = entropy_seed(args.seed)
+        machine.kim.write(symbols(sym)["seed"], bytes((acc & 0xFF, acc >> 8)))
     start = machine.cycles
     send(machine, "1")
     if args.bench:
         print("%-16s %10d" % ("load", machine.cycles - start))
-        bench(machine, sym, args.command or BENCH)
+        commands = walk.commands(args.walk) if args.walk else args.command
+        bench(machine, sym, commands or BENCH)
         return 0
     prof = Profile(machine)
     for command in tqdm(args.command, unit="cmd", file=sys.stderr, leave=False):

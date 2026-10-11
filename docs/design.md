@@ -76,6 +76,10 @@ byte, cleared when the offset wraps and looked up on the next read.
 Addresses are page (`uint16_t`) plus offset (`uint8_t`); no 32-bit arithmetic
 in the interpreter.
 
+`make ... PAGEDYN=1` (`ZM_PAGE_DYN`) builds an experiment in which only a
+prefix of dynamic memory is pinned and the rest is paged with static memory;
+see [paging.md](paging.md). The default build is unchanged.
+
 ## Interpreter
 
 - Version 3 only; all v3 opcodes.

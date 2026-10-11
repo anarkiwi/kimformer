@@ -110,6 +110,42 @@ def test_zork_eviction(runner, zork, frames):
     assert (runner.dir / "zork1.SAV").read_bytes() == full_save
 
 
+def paging(runner, story, *args):
+    """Zork opening with save, restore and restart, played with -S: the
+    transcript and the counter rows (walk.COUNTERS, then seeks)."""
+    commands = [c for c, _ in OPENING] + ["save", "", "restore", "", "restart", "y"]
+    path = runner.dir / "stats"
+    result = runner.run("-s", 7, "-S", path, *args, story, commands=commands)
+    assert result.returncode == 0
+    lines = path.read_text("ascii").splitlines()
+    return text(result), [dict(zip(walk.COUNTERS, map(int, s.split()))) for s in lines]
+
+
+def test_paging_stats(runner, zork):
+    story = runner.add(zork)
+    full, rows = paging(runner, story)
+    last = rows[-1]
+    assert len(rows) == len(OPENING) + 5
+    assert all(len(row) == len(walk.COUNTERS) for row in rows)
+    assert last["frames"] + last["pinned"] == 0xFF - 0x20
+    paged = last["pinned"] < 45
+    if paged:
+        assert last["pinned"] == 13
+        assert 0 < rows[-2]["dirty"] <= last["max_dirty"] <= 45 - 13
+        assert last["dirty"] < last["max_dirty"]
+        assert last["sloads"] > 0
+    else:
+        assert last["pinned"] == 45
+        assert last["max_dirty"] == last["sloads"] == last["swb"] == 0
+    small, rows = paging(runner, story, "-p", 3)
+    assert small == full
+    assert rows[-1]["loads"] > last["loads"]
+    assert (rows[-1]["swb"] > 0) == paged
+    pinned, rows = paging(runner, story, "-P", 64)
+    assert pinned == full
+    assert rows[-1]["pinned"] == 45 and rows[-1]["max_dirty"] == 0
+
+
 def test_zork_split_ram(runner, zork):
     story = runner.add(zork)
     full = walkthrough(runner, story)
@@ -290,6 +326,7 @@ def test_load_errors(runner, czech, zork):
         (("-r", "x"), 64),
         (("-q",), 64),
         (("-d", "/nonexistent"), 66),
+        (("-S", "/nonexistent/stats"), 66),
     ],
 )
 def test_usage(runner, args, code):

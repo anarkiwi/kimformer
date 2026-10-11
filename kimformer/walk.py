@@ -2,11 +2,18 @@
 
 ``python -m kimformer.walk tests/stories/zork1.walk --seeds 1-200`` prints the
 seeds for which the walk ends on the story's maximum score.
+
+``python -m kimformer.walk tests/stories/zork1.walk --stats SEED [--args ARGS]``
+plays it once with that seed and prints the paging counters per move
+(``zm -S``): page loads, story seeks, dirty pages and, for a ``PAGEDYN=1``
+build, the loads and write-backs of a pool that evicts dirty pages.
 """
 
 import argparse
 import re
+import shlex
 import subprocess
+import tempfile
 from pathlib import Path
 
 from tqdm import tqdm
@@ -45,6 +52,46 @@ def play(zm, story, cmds, seed, *args):
     return result.stdout.decode("latin-1")
 
 
+COUNTERS = ("frames", "pinned", "loads", "dirty", "max_dirty", "sloads", "swb")
+
+
+def stats(zm, story, cmds, seed, *args):
+    """Cumulative paging counters (COUNTERS, then seeks) at every read of a
+    walk played with a fixed seed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "stats"
+        play(zm, story, cmds, seed, "-S", path, *args)
+        lines = path.read_text("ascii").splitlines()
+    return [tuple(map(int, line.split())) for line in lines]
+
+
+def summary(rows):
+    """Text summary of stats rows: per-move means and maxima from the first
+    read on."""
+    names = COUNTERS + ("seeks",)
+    first, last = dict(zip(names, rows[0])), dict(zip(names, rows[-1]))
+    moves = max(len(rows) - 1, 1)
+    out = [
+        "frames %(frames)d pinned %(pinned)d max_dirty %(max_dirty)d" % last,
+        "moves %d" % moves,
+    ]
+    for name in ("loads", "seeks", "sloads", "swb"):
+        steps = [
+            dict(zip(names, b))[name] - dict(zip(names, a))[name]
+            for a, b in zip(rows, rows[1:])
+        ] or [0]
+        out.append(
+            "%-6s %8.3f/move max %d total %d"
+            % (
+                name,
+                (last[name] - first[name]) / moves,
+                max(steps),
+                last[name] - first[name],
+            )
+        )
+    return "\n".join(out)
+
+
 def won(out):
     """True if the last score the story reports is its maximum."""
     scores = SCORE.findall(out)
@@ -58,10 +105,16 @@ def main(argv=None):
     parser.add_argument("--story", help="story file (default: Zork I fixture)")
     parser.add_argument("--zm", default=fixtures.REPO / "build" / "zm")
     parser.add_argument("--seeds", default="1-200", help="inclusive range lo-hi")
+    parser.add_argument("--stats", type=int, metavar="SEED", help="paging counters")
+    parser.add_argument("--args", default="", help="more zm options, e.g. '-p 8'")
     args = parser.parse_args(argv)
     lo, hi = map(int, args.seeds.split("-"))
     story = args.story or fixtures.fetch("zork1.z3")
     cmds = commands(args.walk)
+    if args.stats is not None:
+        rows = stats(args.zm, story, cmds, args.stats, *shlex.split(args.args))
+        print(summary(rows))
+        return 0
     wins = [
         seed
         for seed in tqdm(range(lo, hi + 1), desc="seeds")

@@ -58,3 +58,4 @@ its cache, so reload the shell afterwards to use it again.
 - [docs/design.md](docs/design.md) — architecture, memory map, interfaces
 - [docs/demo.md](docs/demo.md) — demo adventure: building, map, walkthrough
 - [docs/development.md](docs/development.md) — building, testing, tracing, the simulator
+- [docs/paging.md](docs/paging.md) — unified paging of dynamic memory: the `PAGEDYN=1` experiment and its costs

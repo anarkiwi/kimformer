@@ -25,10 +25,16 @@ pip install -e ".[dev]"
 | `make bench` | interpreter cycles per Zork I move on the simulated KIM-1 (after `make kim`) |
 | `make format` | clang-format (LLVM style) over `src/` |
 
+`PAGEDYN=1` on any target builds the unified paging experiment
+(`ZM_PAGE_DYN`, [paging.md](paging.md)); use a separate `BUILD` directory to
+keep both, e.g. `make host cov kim BUILD=build/pd PAGEDYN=1` and
+`make test BUILD=build/pd PAGEDYN=1` (which runs the tests against
+`build/pd/cov/zm`). `make mos-check` checks the default build only.
+
 ## Host interpreter
 
 ```
-build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [story]
+build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [-S file] [-P pages] [story]
 ```
 
 | Option | |
@@ -40,6 +46,8 @@ build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [story
 | `-d` | directory for stories and save files (default `.`) |
 | `-v` | VT100 status line, as on the KIM-1 |
 | `-t` | trace: one stderr line per instruction, `PPPPP OP operands...` (PC, opcode byte, operand values, hex) |
+| `-S` | paging counters: before every read a line of cumulative frames, pinned pages, page loads, dirty pages, most dirty pages, shadow loads, shadow write-backs, story seeks |
+| `-P` | `PAGEDYN=1` only: pin this many dynamic pages beyond the header, globals and object entries |
 
 With a story it loads and runs it; without one it runs the launcher over the
 `.z3` files in the directory. Input characters are echoed. The exit status is
@@ -60,6 +68,9 @@ barrow. Combat and the thief depend on the RNG, so the walk wins only for some
 seeds. After changing the walk or the RNG, list the seeds that still win with
 `python -m kimformer.walk tests/stories/zork1.walk --seeds 1-200` (after
 `make host`) and set `SEED` in the test to one of them.
+`python -m kimformer.walk tests/stories/zork1.walk --stats 16 [--zm ZM]
+[--args 'ZM OPTIONS']` plays the walk once and summarises `-S`: page loads,
+seeks and shadow write-backs per move, most dirty pages.
 
 `tests/test_kim.py` and `tests/test_board.py` need `make kim` and run the
 image on the simulated KIM-1; the Zork I tests are marked `zork`
@@ -94,7 +105,7 @@ back; `--cycles` reports the cycles and story seeks of each input line.
 
 ```
 python -m kimformer.prof [--top N] [--image BIN] [--sym SYM] [--ram R] [--lines] story command...
-python -m kimformer.prof --bench [--image BIN] [--ram R] [story [command...]]
+python -m kimformer.prof --bench [--image BIN] [--ram R] [--walk FILE] [--seed N] [story [command...]]
 ```
 
 loads the story, then prints the CPU cycles spent per function (by the
@@ -105,4 +116,7 @@ nearest symbol in `build/kimformer.sym`) while it runs the commands; with
 `--bench` plays the commands (default: Zork I's opening, the cached fixture)
 with a fixed entropy source and prints per command the interpreter's cycles
 (without the time inside `st_seek`, `st_next` and the console calls), those
-I/O cycles and the story seeks.
+I/O cycles and the story seeks. `--walk` takes the commands from a walk file;
+`--seed` seeds the story's RNG as `zm -s` does (it sets the KIM platform's
+key-timing accumulator before the menu choice), so
+`--walk tests/stories/zork1.walk --seed 16` plays the winning Zork I game.
