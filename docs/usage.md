@@ -44,10 +44,11 @@ the images, so no toolchain is needed:
 | `kimformer.ptp` | paper tape, VT100 build: `kimtape load --port /dev/ttyUSB0 kimformer.ptp --go 2000` |
 | `kimformer.prg` | the same for the SD card, copied as `KIMFORMER.PRG` |
 | `kimformer-tty.ptp`, `kimformer-tty.prg` | the plain TTY build (`VT100=0`); copy the `.prg` as `KIMFORMER.PRG` |
+| `kimdos-0400.ptp` | the KIMDOS shell at $0400, to load `KIMFORMER.PRG` from the card: `kimtape load --port /dev/ttyUSB0 kimdos-0400.ptp --go 0400` |
 | `demo.z3` | the [demo adventure](demo.md), for the SD card |
 
 [kimtape](https://github.com/anarkiwi/kimtape) is the only tool needed
-(`pip install git+https://github.com/anarkiwi/kimtape`); Zork I is not
+(`pip install kimtape`); Zork I is not
 included.
 
 ## The SD card
@@ -71,17 +72,27 @@ kimtape load --port /dev/ttyUSB0 build/kimformer.ptp --go 2000
 ```
 
 From the SD card with the KIMDOS shell: the shell must sit outside
-$2000-`__kim_end`, so build it for $0400 (`make ORG=0400` in KIMDOS; it fits
-below $1400) and load and start it at $0400. Then:
+$2000-`__kim_end`, so use the $0400 build (`make kimdos` gives
+`build/kimdos-0400.ptp`; releases carry it). Copy `build/kimformer.prg` to the
+card as `KIMFORMER.PRG`, then load and start the shell by paper tape:
+
+```
+kimtape load --port /dev/ttyUSB0 build/kimdos-0400.ptp --go 0400
+```
+
+In the shell, load the interpreter (the shell prints the inclusive range) and
+return to the monitor:
 
 ```
 >L KIMFORMER
-$2000-$6152
+$2000-$xxxx
 >Q
 ```
 
 and in the monitor type `2000`, space, `G`. The interpreter uses $0400-$13FF
 as cache, so the shell has to be loaded again afterwards.
+`tests/test_kim.py::test_bootstrap_from_disk` runs this sequence on the
+simulator.
 
 ## Playing
 
