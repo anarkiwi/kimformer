@@ -63,6 +63,11 @@ seeds. After changing the walk or the RNG, list the seeds that still win with
 KIM-1; its Zork I tests are marked `zork` (`-m 'not zork'` skips them
 locally; CI runs them).
 
+`tests/test_board.py` runs `kimformer.board` against `tests/fake_kim.py`, a
+KIM-1 on a pty: the monitor commands kimtape uses, and `G` running the
+simulated PAL-II on what was loaded. The plain TTY case needs
+`make kim VT100=0 BUILD=build/plain`.
+
 ## KIM-1 simulator
 
 `kimformer.sim.Machine` is a PAL-II (RAM $0000-$13FF and $2000-$FEFF, writes

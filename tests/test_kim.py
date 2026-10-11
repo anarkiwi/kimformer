@@ -5,7 +5,7 @@ import io
 import pytest
 
 from kimdos.sim import INPUT, MONITOR
-from kimformer import prof, sim
+from kimformer import prof, sim, walk
 from kimformer.sim import IMAGE, Machine
 from tests.conftest import REPO
 from tests.test_host import OPENING
@@ -136,15 +136,13 @@ def test_too_little_ram(image, stories):
 
 
 def test_demo_walkthrough(image, stories):
-    walk = (REPO / "games" / "demo.walkthrough").read_text(encoding="ascii")
+    script = (REPO / "games" / "demo.walkthrough").read_text(encoding="ascii")
     expect = (REPO / "games" / "demo.expect").read_text(encoding="ascii")
     machine = boot(image, stories)
     out = machine.send("1")
-    for command in walk.splitlines():
+    for command in script.splitlines():
         out += machine.send(command)
-    lines = iter(out.splitlines())
-    for want in expect.splitlines():
-        assert any(want in line for line in lines), want
+    assert walk.unmatched(expect.splitlines(), out.splitlines()) is None
     assert machine.drive.files[b"demo.sav"][:4] == b"KZ3\x01"
     check(machine)
 

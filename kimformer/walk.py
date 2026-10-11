@@ -22,6 +22,16 @@ def commands(path):
     return [line for line in lines if line and not line.startswith("#")]
 
 
+def unmatched(expect, lines):
+    """The first of expect not found in order in lines, one per line; None if
+    all are (as games/expect.awk checks)."""
+    lines = iter(lines)
+    for want in expect:
+        if not any(want in line for line in lines):
+            return want
+    return None
+
+
 def play(zm, story, cmds, seed, *args):
     """Interpreter output for cmds played on story with a fixed seed."""
     story = Path(story)

@@ -27,7 +27,9 @@ kimtape load --port /dev/ttyUSB0 build/kimformer.ptp --go 2000
 ```
 
 or `L KIMFORMER` from the KIMDOS shell, then `2000 G`. Pick a story from the
-menu. `python -m kimformer.sim --dir DIR` runs the same on a simulated PAL-II.
+menu. Releases carry the images and the demo story ready to use.
+`python -m kimformer.sim --dir DIR` runs the same on a simulated PAL-II;
+`python -m kimformer.board --port /dev/ttyUSB0` smoke-tests a board.
 
 ## Documentation
 
