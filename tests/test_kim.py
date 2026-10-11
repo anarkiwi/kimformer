@@ -4,6 +4,7 @@ import io
 
 import pytest
 
+from kimdos.build import packaged
 from kimdos.sim import INPUT, MONITOR
 from kimformer import prof, sim, walk
 from kimformer.sim import IMAGE, Machine
@@ -237,11 +238,17 @@ def test_meter():
 def test_bench(image, demo, tmp_path, capsys):
     story = tmp_path / "demo.z3"
     story.write_bytes(demo.read_bytes())
-    assert prof.main(["--bench", "--image", str(image), str(story), "look"]) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[0].split() == ["command", "interp", "io", "seeks"]
-    assert lines[1].split()[0] == "look" and int(lines[1].split()[1]) > 0
-    assert lines[-1].startswith("mean")
+    loads = []
+    for flags in ([], ["--no-jiffy"]):
+        args = ["--bench", *flags, "--image", str(image), str(story), "look"]
+        assert prof.main(args) == 0
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0].split()[0] == "load"
+        loads.append(int(lines[0].split()[1]))
+        assert lines[1].split() == ["command", "interp", "io", "seeks"]
+        assert lines[2].split()[0] == "look" and int(lines[2].split()[1]) > 0
+        assert lines[-1].startswith("mean")
+    assert loads[0] < loads[1]
 
 
 def test_by_line(tmp_path):
@@ -253,13 +260,11 @@ def test_by_line(tmp_path):
 
 def test_bootstrap_from_disk(image, stories):
     """KIMDOS at $0400 loads KIMFORMER from the card; 2000 G starts it."""
-    shell = REPO / "build" / "kimdos-0400.bin"
-    if not shell.exists():
-        pytest.fail(f"{shell} missing: run make kimdos")
+    shell = packaged(0x0400)
     prg = (REPO / "build" / "kimformer.prg").read_bytes()
     machine = Machine({**stories, b"KIMFORMER": prg}, image=image, timer=0x5A)
     machine.kim.write(sim.ORG, bytes(len(prg) - 2))
-    machine.kim.write(0x0400, shell.read_bytes())
+    machine.kim.write(0x0400, shell.binary)
     machine.kim.mpu.pc = 0x0400
     assert machine.run().endswith(">")
     assert "$2000-$%04X" % (sim.ORG + len(prg) - 3) in machine.send("L KIMFORMER")

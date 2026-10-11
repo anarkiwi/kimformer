@@ -2,12 +2,13 @@
 
 ## Requirements
 
-`cc`, `make`, Python 3.11+ and Docker (for the llvm-mos SDK image). KIMDOS is
-the `extern/kimdos` submodule; install it and the Python tooling with
+`cc`, `make`, Python 3.11+ and Docker (for the llvm-mos SDK image). KIMDOS
+comes from PyPI (`kimdos`): its llvm-mos C library (`python -m kimdos.clib`,
+copied to `build/kimdos-c` for the container), the KIM-1 simulator and the
+prebuilt shell images. Install it and the Python tooling with
 
 ```
-git submodule update --init
-pip install -e extern/kimdos -e ".[dev]"
+pip install -e ".[dev]"
 ```
 
 ## Targets

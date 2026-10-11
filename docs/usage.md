@@ -18,7 +18,7 @@
 ## Building
 
 ```
-git submodule update --init
+pip install -e .
 make kim
 ```
 
@@ -29,7 +29,9 @@ make kim
 | `build/kimformer.prg` | the same with a $2000 load address, for the SD card |
 
 `make kim VT100=0` leaves out the status line and its escape sequences, for
-a terminal that is not VT100 compatible. `make kim` prints `__kim_end` (the
+a terminal that is not VT100 compatible. `make kim JIFFY=0` makes the
+interpreter use the standard serial protocol even with a JiffyDOS device; see
+[JiffyDOS](#jiffydos). `make kim` prints `__kim_end` (the
 end of the image and its stack) and the free pages above it, and fails if
 fewer than `KIM_MIN_PAGES` (96: Zork I's 45 pages of dynamic memory and a
 cache) remain.
@@ -44,12 +46,13 @@ the images, so no toolchain is needed:
 | `kimformer.ptp` | paper tape, VT100 build: `kimtape load --port /dev/ttyUSB0 kimformer.ptp --go 2000` |
 | `kimformer.prg` | the same for the SD card, copied as `KIMFORMER.PRG` |
 | `kimformer-tty.ptp`, `kimformer-tty.prg` | the plain TTY build (`VT100=0`); copy the `.prg` as `KIMFORMER.PRG` |
-| `kimdos-0400.ptp` | the KIMDOS shell at $0400, to load `KIMFORMER.PRG` from the card: `kimtape load --port /dev/ttyUSB0 kimdos-0400.ptp --go 0400` |
 | `demo.z3` | the [demo adventure](demo.md), for the SD card |
 
+The KIMDOS shell at $0400, to load `KIMFORMER.PRG` from the card, is a
+[KIMDOS release](https://github.com/anarkiwi/kimdos/releases) asset:
+`kimtape load --port /dev/ttyUSB0 https://github.com/anarkiwi/kimdos/releases/latest/download/kimdos-0400.ptp --go 0400`.
 [kimtape](https://github.com/anarkiwi/kimtape) is the only tool needed
-(`pip install kimtape`); Zork I is not
-included.
+(`pip install kimtape`); Zork I is not included.
 
 ## The SD card
 
@@ -72,12 +75,13 @@ kimtape load --port /dev/ttyUSB0 build/kimformer.ptp --go 2000
 ```
 
 From the SD card with the KIMDOS shell: the shell must sit outside
-$2000-`__kim_end`, so use the $0400 build (`make kimdos` gives
-`build/kimdos-0400.ptp`; releases carry it). Copy `build/kimformer.prg` to the
-card as `KIMFORMER.PRG`, then load and start the shell by paper tape:
+$2000-`__kim_end`, so use the $0400 build, `kimdos-0400.ptp` from the KIMDOS
+releases (also in the kimdos Python package, `kimdos.build.packaged(0x400)`).
+Copy `build/kimformer.prg` to the card as `KIMFORMER.PRG`, then load and
+start the shell by paper tape:
 
 ```
-kimtape load --port /dev/ttyUSB0 build/kimdos-0400.ptp --go 0400
+kimtape load --port /dev/ttyUSB0 https://github.com/anarkiwi/kimdos/releases/latest/download/kimdos-0400.ptp --go 0400
 ```
 
 In the shell, load the interpreter (the shell prints the inclusive range) and
@@ -164,12 +168,22 @@ At least 3 cache frames are needed.
 
 | Board | Pages | Zork I |
 | --- | --- | --- |
-| PAL-II defaults | 16 at $04-$13, 138 at $75-$FE | 109 cache frames of 340 story pages |
-| RAM $0000-$03FF, $2000-$AFFF | 59 at $75-$AF | 14 cache frames: 25-48 page loads a move |
-| RAM $0000-$03FF, $2000-$A3FF | 47 at $75-$A3 | `Error 3`: too few cache frames |
+| PAL-II defaults | 16 at $04-$13, 136 at $77-$FE | 107 cache frames of 340 story pages |
+| RAM $0000-$03FF, $2000-$AFFF | 57 at $77-$AF | 12 cache frames: 25-49 page loads a move |
+| RAM $0000-$03FF, $2000-$A3FF | 45 at $77-$A3 | `Error 3`: too few cache frames |
 
 With fewer frames the game runs the same but reads the card more often: a
-page miss costs a seek and a 256-byte read, about 0.17 s.
+page miss costs a seek and a 256-byte read, about 0.10 s with JiffyDOS and
+0.17 s without.
+
+## JiffyDOS
+
+The interpreter speaks JiffyDOS to an sd2iec (or any drive that answers it)
+and the standard serial protocol to the rest, deciding on every command; it
+reads the story about 1.7 times as fast. If a drive misbehaves with it,
+`make kim JIFFY=0` builds an interpreter that always uses the standard
+protocol (the KIMDOS shell's `J0` does the same for the shell). The JiffyDOS
+code takes two pages of the image, two cache frames.
 
 ## Performance
 
@@ -180,12 +194,15 @@ opening moves of `tests/test_host.py`. `make bench` (`python -m kimformer.prof
 interpreter's cycles without story I/O and console time, the I/O cycles and
 the seeks:
 
+Story I/O and TTY columns give JiffyDOS / the standard protocol
+(`make bench` against a drive with and without JiffyDOS: `--no-jiffy`):
+
 | | Interpreter | With story I/O | With TTY output |
 | --- | --- | --- | --- |
 | start to the menu | 0.2 s | | 0.8 s |
-| load (154 pages) | | 23.2 s | 27.5 s with the opening text |
-| one move, PAL-II | 0.74-1.17 s, mean 1.00 s | 0.80-1.99 s, 0-4 page loads | 2.2-6.5 s |
-| one move, 14 cache frames | 0.75-1.19 s | 5.8-11.6 s, 25-48 page loads | |
+| load (154 pages) | | 13.6 s / 23.5 s | 17.9 s / 27.8 s with the opening text |
+| one move, PAL-II | 0.74-1.17 s, mean 1.00 s | 0.80-1.65 s / 0.80-2.00 s, 0-4 page loads | 2.1-6.1 s / 2.2-6.5 s |
+| one move, 12 cache frames | 0.75-1.19 s | 3.8-7.4 s / 6.1-12.0 s, 25-49 page loads | |
 
 `make bench` before and after the interpreter core was reworked for the
 6502 (fixed locals and split 8-bit evaluation stack, zero page PC pointer,

@@ -10,16 +10,15 @@ builds for a plain TTY.
 ## Build
 
 ```
-git submodule update --init
-pip install -e extern/kimdos -e ".[dev]"
+pip install -e ".[dev]"   # with kimdos from PyPI: its C library and simulator
 make kim         # build/kimformer.bin, .ptp (paper tape), .prg (SD card)
-make kimdos      # build/kimdos-0400.ptp, the KIMDOS shell at $0400 (needs cc65)
 make host        # build/zm, the same interpreter on the host
 make test coverage mos-check
 ```
 
-Releases carry `kimformer.ptp`, `kimformer.prg`, `kimdos-0400.ptp` and the
-demo story ready to use.
+Releases carry `kimformer.ptp`, `kimformer.prg` and the demo story ready to
+use; the KIMDOS shell comes from the
+[KIMDOS releases](https://github.com/anarkiwi/kimdos/releases).
 
 ## Use
 
@@ -36,7 +35,7 @@ From the SD card, bootstrapping the KIMDOS shell by paper tape: copy
 `kimformer.prg` to the card as `KIMFORMER.PRG`, then
 
 ```
-kimtape load --port /dev/ttyUSB0 kimdos-0400.ptp --go 0400
+kimtape load --port /dev/ttyUSB0 https://github.com/anarkiwi/kimdos/releases/latest/download/kimdos-0400.ptp --go 0400
 ```
 
 and in the shell

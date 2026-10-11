@@ -11,7 +11,7 @@ HOST_CC ?= cc
 CORE := src/zmem.c src/ztext.c src/zobj.c src/zexec.c src/launcher.c
 HDRS := $(wildcard src/*.h)
 
-.PHONY: all host kim kimdos demo test format clean bench
+.PHONY: all host kim demo test format clean bench
 all: host
 
 format:
@@ -75,7 +75,10 @@ mos-check: $(CORE) $(HDRS) src/stub/plat_stub.c
 # .ptp (paper tape) and .prg (load address + image, for KIMDOS L from the SD card).
 # VT100=0 builds for a plain TTY (no status line).
 # KIM_MIN_PAGES: free pages required from __kim_end to $FEFF.
-KIMDOS_C := extern/kimdos/c
+# The KIMDOS C library from the installed kimdos package, copied under
+# $(BUILD) where the llvm-mos container can see it.
+KIMDOS_PKG := $(shell python3 -m kimdos.clib 2>/dev/null)
+KIMDOS_C := $(BUILD)/kimdos-c
 KIM_SRC := $(CORE) src/vt100.c src/kim/plat_kim.c $(KIMDOS_C)/kim1/crt.s \
     $(KIMDOS_C)/src/iec.s $(KIMDOS_C)/src/dos.c $(KIMDOS_C)/src/dir.c \
     $(KIMDOS_C)/src/con.s
@@ -83,20 +86,18 @@ KIM_DEPS := $(KIM_SRC) $(HDRS) $(KIMDOS_C)/include/kimdos.h \
     $(KIMDOS_C)/src/kdint.h $(KIMDOS_C)/kim1/link.ld
 KIM_MIN_PAGES ?= 96
 VT100 ?= 1
+JIFFY ?= 1
 KIMTAPE ?= kimtape
 
 kim: $(BUILD)/kimformer.bin $(BUILD)/kimformer.ptp $(BUILD)/kimformer.prg
 
-# The KIMDOS shell at $$0400, below the interpreter, to load it from the SD card.
-kimdos: $(BUILD)/kimdos-0400.ptp
-
-$(BUILD)/kimdos-0400.ptp: $(wildcard extern/kimdos/asm/*/*)
-	$(MAKE) -C extern/kimdos ORG=0400 BUILD=$(abspath $(BUILD))/kimdos
-	cp $(BUILD)/kimdos/kimdos-0400.bin $(BUILD)/kimdos/kimdos-0400.ptp $(BUILD)/
-
-$(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)
+$(KIMDOS_C)/%: $(KIMDOS_PKG)/%
 	@mkdir -p $(@D)
-	$(MOS_CC) $(MOS_CFLAGS) -DPLAT_STATUS=$(VT100) -I $(KIMDOS_C)/include -T $(KIMDOS_C)/kim1/link.ld \
+	cp $< $@
+
+$(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY)
+	@mkdir -p $(@D)
+	$(MOS_CC) $(MOS_CFLAGS) -DPLAT_STATUS=$(VT100) -DKIM_JIFFY=$(JIFFY) -I $(KIMDOS_C)/include -T $(KIMDOS_C)/kim1/link.ld \
 	    -Wl,-Map=$(BUILD)/kimformer.map -o $(BUILD)/kimformer $(KIM_SRC)
 	mv $(BUILD)/kimformer $@
 	$(MOS_NM) -n $(BUILD)/kimformer.elf > $(BUILD)/kimformer.sym
@@ -111,7 +112,7 @@ $(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)
 bench:
 	python3 -m kimformer.prof --bench --image $(BUILD)/kimformer.bin
 
-$(BUILD)/kim-vt100-$(VT100):
+$(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY):
 	@mkdir -p $(@D)
 	rm -f $(BUILD)/kim-vt100-*
 	touch $@
