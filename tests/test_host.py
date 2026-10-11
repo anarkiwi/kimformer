@@ -198,6 +198,13 @@ def test_probe_random(runner, probe):
     assert all(1 <= int(v) <= 100 for v in first[:3])
 
 
+def test_probe_seed(runner, probe):
+    story = runner.add(probe)
+    rolls = [text(runner.run("-s", s, story, commands=["roll"])) for s in (2, 2, 4, 6)]
+    assert rolls[0] == rolls[1]
+    assert len(set(rolls[1:])) == 3
+
+
 def test_probe_save_restore(runner, probe):
     commands = ["count", "save", "", "count", "count", "restore", "", "count"]
     commands += ["restore", "missing.sav", "save", "nodir/x.sav"]

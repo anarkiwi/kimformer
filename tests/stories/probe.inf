@@ -93,6 +93,7 @@ Object Ball "red ball" Box with weight 7 8, label 'ball' 'red', has shiny;
         @random -7 -> x;
         @random 100 -> x; print x, " ";
         @random 0 -> x; print x, "^";
+      'roll': @random 30000 -> x; print x, "^";
       'call0': @call x -> x; print x, "^";
       'noops': @split_window 1; @set_window 0; @show_status; @input_stream 0;
         @sound_effect 1; @nop; print "ok^";

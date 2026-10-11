@@ -43,3 +43,11 @@ With a story it loads and runs it; without one it runs the launcher over the
 exercises one area (parsing, streams, properties, save/restore, every fatal
 error). Run a single test first, e.g.
 `python -m pytest -n0 tests/test_host.py::test_czech`, then the full suite.
+
+`tests/test_zork_full.py` plays `tests/stories/zork1.walk`, a command list for
+all 350 points of Zork I, with a fixed `-s` seed: every treasure must reach the
+trophy case, the score must climb to 350 and the game must end in the stone
+barrow. Combat and the thief depend on the RNG, so the walk wins only for some
+seeds. After changing the walk or the RNG, list the seeds that still win with
+`python -m kimformer.walk tests/stories/zork1.walk --seeds 1-200` (after
+`make host`) and set `SEED` in the test to one of them.
