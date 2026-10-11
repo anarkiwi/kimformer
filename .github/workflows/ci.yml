@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e extern/kimdos -e ".[dev]"
       - name: black
         run: black --check --diff kimformer tests
       - name: pylint
@@ -29,10 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e extern/kimdos -e ".[dev]"
       - uses: actions/cache@v4
         with:
           path: tests/fixtures/cache
@@ -40,13 +42,45 @@ jobs:
       - run: make fixtures
       - run: make host cov
       - name: tests
-        run: make test PYTEST_ARGS=--cov-fail-under=85
+        run: make test PYTEST_ARGS=--ignore=tests/test_kim.py
       - name: C coverage
         run: make coverage
+
+  kim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e extern/kimdos -e ".[dev]"
+      - uses: actions/cache@v4
+        with:
+          path: tests/fixtures/cache
+          key: fixtures-${{ hashFiles('kimformer/fixtures.py') }}
+      - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
+      - run: make fixtures
+      - run: make kim
+      - name: plain TTY build
+        run: make kim VT100=0 BUILD=build/plain
+      - name: tests (all, with the simulated KIM-1)
+        run: make test PYTEST_ARGS=--cov-fail-under=85
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kimformer
+          path: |
+            build/kimformer.bin
+            build/kimformer.ptp
+            build/kimformer.prg
+            build/kimformer.map
 
   mos-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
       - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:v23.1.0
       - run: make mos-check

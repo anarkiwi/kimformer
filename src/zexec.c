@@ -23,7 +23,7 @@ static struct {
 static char sname[17];
 
 static uint16_t zstack[ZSTACK_WORDS];
-static uint16_t sp, fp, sbase, globals, rng = 1;
+static uint16_t sp, fp, sbase, globals, rng;
 static uint16_t opnd[4];
 static uint8_t nops;
 static uint16_t op_page;
@@ -146,7 +146,7 @@ static void zcall(void) {
 }
 
 static void zinit(void) {
-  dyn[H_FLAGS1] = (dyn[H_FLAGS1] | 0x10) & ~0x20;
+  dyn[H_FLAGS1] = (dyn[H_FLAGS1] & ~0x30) | (PLAT_STATUS ? 0 : 0x10);
   dyn[0x1E] = 6;
   dyn[0x1F] = 'A';
   dyn[0x32] = 1;
@@ -157,6 +157,7 @@ static void zinit(void) {
 static void zstart(void) {
   uint16_t a = zw(H_PC);
   zinit();
+  rng = plat_entropy() | 1;
   sp = fp = sbase = 0;
   zstreams_reset();
   pc_set(a >> 8, a);
@@ -365,8 +366,11 @@ static void exec(uint8_t code) {
       zret(1);
     }
     return;
-  case OP0(4):
   case OP0(12):
+    if (PLAT_STATUS)
+      zstatus();
+    return;
+  case OP0(4):
   case OPV(10):
   case OPV(11):
   case OPV(20):

@@ -1,0 +1,31 @@
+! Status line probe: a time game; each read shows one clock value.
+Statusline time;
+Release 1;
+Serial "261011";
+
+Global location;
+Global hours;
+Global mins;
+
+Array text_buf -> 20;
+Array parse_buf --> 9;
+
+Object Tower "Clock Tower";
+
+[ Tick h m;
+  hours = h;
+  mins = m;
+  read text_buf parse_buf;
+];
+
+[ Main;
+  text_buf->0 = 18;
+  parse_buf->0 = 4;
+  Tick(0, 5);
+  location = Tower;
+  Tick(13, 30);
+  hours = 12;
+  mins = 0;
+  @show_status;
+  Tick(23, 59);
+];

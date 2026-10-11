@@ -65,6 +65,7 @@ uint8_t zreadline(uint8_t *dst, uint8_t max);
 void zsread(uint16_t text, uint16_t parse);
 void zstream(int16_t n, uint16_t table);
 void zstreams_reset(void);
+void zstatus(void);
 
 /* zobj.c */
 uint8_t obj_rel(uint16_t o, uint8_t field);
