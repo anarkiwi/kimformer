@@ -1,0 +1,124 @@
+! Interpreter probe: each command exercises one area of the Z-machine.
+Release 3;
+Serial "260101";
+
+Array text_buf -> 66;
+Array parse_buf --> 13;
+Array s3a --> 20;
+Array s3b --> 20;
+
+Attribute shiny;
+Property weight 5;
+Property label;
+Property spare;
+
+Object Box "box" with weight 3, label 'box';
+Object Ball "red ball" Box with weight 7 8, label 'ball' 'red', has shiny;
+
+[ Deep n; return Deep(n + 1); ];
+
+[ NoLocals x; @pull x; return x; ];
+
+[ OneLocal a; a = 1; @inc 3; return a; ];
+
+[ Nest n; if (n == 0) rfalse; @output_stream 3 s3b; Nest(n - 1); ];
+
+[ ShowParse i n w;
+  n = parse_buf->1;
+  print n;
+  for (i = 0 : i < n : i++) {
+    w = parse_buf-->(i * 2 + 1);
+    print " ";
+    if (w) print (address) w; else print "?";
+    print "/", parse_buf->(i * 4 + 4), "/", parse_buf->(i * 4 + 5);
+  }
+  new_line;
+];
+
+[ Streams i;
+  @output_stream 3 s3a;
+  print "abc";
+  @output_stream 3 s3b;
+  print "de^";
+  @output_stream -3;
+  print "f";
+  @output_stream -3;
+  print s3a-->0, " ", s3b-->0, " ";
+  for (i = 0 : i < s3a-->0 : i++) print (char) s3a->(i + 2);
+  print " ", s3b->4, "^";
+  @output_stream -1;
+  print "hidden";
+  @output_stream 1;
+  @output_stream 4;
+  @output_stream 2;
+  print "shown ", (0-->8) & 1;
+  @output_stream -2;
+  print (0-->8) & 1, "^";
+];
+
+[ Props;
+  print Ball.weight, " ", Box.weight, " ", Ball.&weight ~= 0, " ";
+  print Ball.#weight, " ", Ball.#label, " ";
+  @get_prop_len 0 -> sp;
+  @print_num sp;
+  print " ", (property) 0;
+  Box.weight = 9;
+  print " ", Box.weight, " ";
+  @get_next_prop Ball 0 -> sp;
+  @print_num sp;
+  @get_next_prop Ball label -> sp;
+  print " ";
+  @print_num sp;
+  print " ", (name) Ball, " ", parent(Ball) == Box, " ", Ball has shiny, "^";
+];
+
+[ Main w x;
+  print "PROBE^";
+  for (::) {
+    print ">";
+    text_buf->0 = 64;
+    parse_buf->0 = 6;
+    read text_buf parse_buf;
+    w = parse_buf-->1;
+    x = 0;
+    switch (w) {
+      'parse': ShowParse();
+      'streams': Streams();
+      'props': Props();
+      'esc': print "<{|}>"; @print_char 200; @print_char 0; new_line;
+      'random':
+        @random -7 -> x;
+        @random 100 -> x; print x, " ";
+        @random 100 -> x; print x, " ";
+        @random -7 -> x;
+        @random 100 -> x; print x, " ";
+        @random 0 -> x; print x, "^";
+      'call0': @call x -> x; print x, "^";
+      'noops': @split_window 1; @set_window 0; @show_status; @input_stream 0;
+        @sound_effect 1; @nop; print "ok^";
+      'verify': @verify ?vok; print "bad^"; jump done; .vok; print "good^";
+      'save': @save ?sok; print "save failed^"; jump done; .sok; print "saved^";
+      'restore': @restore ?rok; print "restore failed^"; jump done;
+        .rok; print "restored^";
+      'restart': @restart;
+      'quit': @quit;
+      'count': text_buf->65 = text_buf->65 + 1; print text_buf->65, "^";
+      'div0': print 7 / x;
+      'mod0': print 7 % x;
+      'obj0': give x shiny;
+      'attr': @set_attr Ball 32;
+      'putprop': @put_prop Box spare 1;
+      'nextprop': @get_next_prop Box 20 -> x;
+      'static': x = 0-->7; @storeb x 0 0;
+      'far': @loadb $ffff 0 -> x;
+      'pull': NoLocals();
+      'local': OneLocal();
+      'deep': Deep(0);
+      'nest': Nest(17);
+      'illegal': @"1OP:8S" x -> x;
+      'ret': @rtrue;
+      default: print "?^";
+    }
+    .done;
+  }
+];
