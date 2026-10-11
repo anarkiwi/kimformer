@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kimformer"
+version = "0.1.0"
+description = "Version 3 Z-machine for the KIM-1, PAL-II and replicas"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "anarkiwi" }]
+dependencies = ["tqdm"]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "gcovr",
+    "pylint",
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "kimdos @ git+https://github.com/anarkiwi/kimdos",
+]
+
+[tool.setuptools.packages.find]
+include = ["kimformer*"]
+
+[tool.pytest.ini_options]
+addopts = "-n auto --cov=kimformer --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint."messages control"]
+disable = ["consider-using-f-string"]
+
+[tool.pylint.basic]
+no-docstring-rgx = "^(test_|_)"
