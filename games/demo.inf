@@ -1,0 +1,323 @@
+! kimformer demo: a five-room adventure with no standard library.
+! Build: inform6 -v3 -e -~S '$OMIT_UNUSED_ROUTINES=1' demo.inf
+
+Release 1;
+Serial "261011";
+
+Abbreviate ". ";
+Abbreviate ", ";
+Abbreviate "You ";
+Abbreviate "'t ";
+Abbreviate "_to";
+Abbreviate "the ";
+Abbreviate "that.";
+Abbreviate "It ";
+Abbreviate "ed.";
+Abbreviate "have ";
+Abbreviate "ing";
+Abbreviate "rass ";
+
+Global location;
+Global score;
+Global turns;
+
+Constant MAX_SCORE 50;
+
+Attribute light;
+Attribute portable;
+Attribute container;
+Attribute open;
+Attribute locked;
+Attribute scenery;
+Attribute scored;
+
+Property description;
+Property react;
+Property points;
+Property door_to;
+Property n_to;
+Property s_to;
+Property e_to;
+Property w_to;
+Property u_to;
+Property d_to;
+
+Array buffer -> 62;
+Array parse --> 17;
+Array nbuf -> 34;
+Array dirs table 'n//' n_to 's//' s_to 'e//' e_to 'w//' w_to 'u//' u_to
+    'd//' d_to 'north' n_to 'south' s_to 'east' e_to 'west' w_to 'up' u_to
+    'down' d_to;
+Array ranks table "Trespasser" "Visitor" "Explorer" "Burglar" "Treasure Hunter"
+    "Hero";
+
+Object Meadow "Meadow"
+  with description
+        "Sunlit grass. A cottage stands to the north and a shed to the east.",
+       n_to Porch, e_to Shed,
+       react [; if (random(3) == 1) "^A lark sings overhead."; ],
+  has light;
+
+Object Shed "Shed"
+  with description "A cramped shed smelling of oil. The way out is west.",
+       w_to Meadow,
+  has light;
+
+Object -> lamp "brass lamp"
+  with name 'brass' 'lamp',
+       description "A brass oil lamp.",
+       react [ v;
+         if (v == 'light') {
+           give lamp light;
+           "The lamp flickers into life.";
+         }
+         if (v == 'examine' or 'x//') {
+           print "A brass oil lamp. It is ";
+           if (lamp has light) "lit."; "dark.";
+         }
+       ],
+  has portable;
+
+Object -> box "wooden box"
+  with name 'wooden' 'box',
+       description "A sturdy wooden box with a hinged lid.",
+  has container;
+
+Object -> -> key "iron key"
+  with name 'iron' 'key',
+       description "A heavy iron key.",
+  has portable;
+
+Object Porch "Porch"
+  with description "A creaky porch before an oak door. The meadow is south.",
+       s_to Meadow, n_to door,
+  has light;
+
+Object -> door "oak door"
+  with name 'oak' 'door',
+       description "A solid oak door with a keyhole.",
+       door_to Hall, points 10,
+  has scenery container locked;
+
+Object Hall "Hall"
+  with description "A dusty hall. Stairs lead down into darkness; the porch \
+         is south.",
+       s_to Porch, d_to Cellar,
+  has light;
+
+Object Cellar "Cellar"
+  with description "A damp cellar. Stairs lead up.",
+       u_to Hall, points 10;
+
+Object -> crown "golden crown"
+  with name 'golden' 'gold' 'crown',
+       description "A crown of beaten gold.",
+       points 20,
+  has portable;
+
+Object player "yourself" Meadow
+  with points 10,
+  has scenery;
+
+[ Main; Play(); ];
+
+[ Lit;
+  return location has light ||
+      (lamp has light && (lamp in player || lamp in location));
+];
+
+[ InScope o p;
+  p = parent(o);
+  if (p == player) rtrue;
+  if (~~Lit()) rfalse;
+  if (p == location) rtrue;
+  if (p && p has container && p has open) return InScope(p);
+  rfalse;
+];
+
+[ Award o;
+  if (o hasnt scored) {
+    give o scored;
+    score = score + o.points;
+  }
+];
+
+[ CName o i;
+  @output_stream 3 nbuf;
+  @print_obj o;
+  @output_stream -3;
+  i = nbuf->2;
+  if (i >= 'a' && i <= 'z') i = i - 32;
+  print (char) i;
+  for (i = 3: i < nbuf->1 + 2: i++) print (char) nbuf->i;
+];
+
+[ List p d hdr o i n;
+  for (o = child(p): o: o = sibling(o)) {
+    if (o has scenery) continue;
+    if (hdr) { print (string) hdr; hdr = 0; }
+    for (i = 0: i < d: i++) print "  ";
+    @print_obj o;
+    if (o has light) print " (lit)";
+    new_line;
+    n++;
+    if (o has container && o has open) List(o, d + 1);
+  }
+  return n;
+];
+
+[ Look;
+  if (~~Lit()) "It is pitch dark.";
+  @print_obj location;
+  print "^", (string) location.description, "^";
+  Award(location);
+  List(location, 1, "You can see:^");
+];
+
+[ Go p x;
+  @get_prop location p -> x;
+  if (x == 0) "You can't go that way.";
+  if (x has container) {
+    if (x hasnt open) { print (CName) x; " is closed."; }
+    x = x.door_to;
+  }
+  move player to x;
+  location = x;
+  Look();
+];
+
+[ ShowScore;
+  print "You have scored ", score, " out of ", MAX_SCORE, " in ", turns,
+      " turns, earning the rank of ", (string) ranks-->(1 + score / 10), ".^";
+];
+
+[ Dir w i;
+  for (i = 1: i < dirs-->0: i = i + 2)
+    if (dirs-->i == w) return dirs-->(i + 1);
+  return 0;
+];
+
+[ Play v w n o i;
+  location = Meadow;
+  buffer->0 = 60;
+  parse-->0 = $800;
+  print "^KIMFORMER DEMO^Release ", 0-->1, " / Serial number ";
+  for (i = $12: i < $18: i++) print (char) 0->i;
+  print "^^";
+  Look();
+  for (::) {
+    print "^>";
+    read buffer parse;
+    n = parse-->0 & $ff;
+    if (n == 0) { print "Pardon?^"; continue; }
+    for (i = 0: i < n: i++) {
+      if (parse-->(1 + 2 * i) == 0) {
+        print "I don't know the word ~";
+        o = parse-->(2 + 2 * i);
+        for (w = o & $ff: w < (o & $ff) + o / 256: w++) print (char) buffer->w;
+        print "~.^";
+        jump Next;
+      }
+    }
+    v = parse-->1;
+    w = 0;
+    for (i = 1: i < n: i++) {
+      w = parse-->(1 + 2 * i);
+      if (w ~= 'the' or 'a//' or 'with') break;
+      w = 0;
+    }
+    turns++;
+    o = 0;
+    if (w && Dir(w) == 0) {
+      objectloop (i) if (InScope(i) && WordIn(w, i)) o = i;
+      if (o == 0) { print "You can't see any such thing.^"; jump Next; }
+      i = o.react;
+      if (i && i(v)) jump Next;
+    }
+    Perform(v, w, o);
+    .Next;
+    i = location.react;
+    if (i) i();
+    if (crown in player && location == Meadow) {
+      Award(player);
+      print "^You carry the crown into the sunlight.^^*** You have won ***^^";
+      ShowScore();
+      quit;
+    }
+  }
+];
+
+[ WordIn w o a i;
+  a = o.&name;
+  for (i = 0: i < o.#name / 2: i++) if (a-->i == w) rtrue;
+  rfalse;
+];
+
+[ Perform v w o;
+  if (Dir(v)) return Go(Dir(v));
+  switch (v) {
+    'look', 'l//': return Look();
+    'inventory', 'i//':
+      if (List(player, 1, "You are carrying:^") == 0) "You are empty-handed.";
+      return;
+    'score': return ShowScore();
+    'go', 'walk':
+      if (Dir(w)) return Go(Dir(w));
+      "Which way?";
+    'save':
+      @save ?SaveOk;
+      "Save failed.";
+      .SaveOk;
+      "Ok.";
+    'restore':
+      @restore ?RestOk;
+      "Restore failed.";
+      .RestOk;
+      "Ok.";
+    'restart': @restart;
+    'verify':
+      @verify ?VerOk;
+      "Story file is corrupt.";
+      .VerOk;
+      "Story file verified.";
+    'quit', 'q//':
+      print "Goodbye.^";
+      quit;
+  }
+  if (o == 0) {
+    print "What do you want to ", (address) v, "?^";
+    return;
+  }
+  switch (v) {
+    'examine', 'x//':
+      print (string) o.description, "^";
+      if (o has container && o has open) List(o, 1, "It contains:^");
+    'take', 'get':
+      if (o in player) "You already have that.";
+      if (o hasnt portable) "You can't take that.";
+      move o to player;
+      Award(o);
+      print (CName) o, ": taken.^";
+    'drop':
+      if (o notin player) "You don't have that.";
+      move o to location;
+      print (CName) o, ": dropped.^";
+    'open':
+      if (o hasnt container) "You can't open that.";
+      if (o has open) "It's already open.";
+      if (o has locked) "It's locked.";
+      give o open;
+      print "You open the ";
+      @print_obj o;
+      print ".^";
+      if (o hasnt scenery) List(o, 1, "It contains:^");
+    'unlock':
+      if (o hasnt locked) "It isn't locked.";
+      if (key notin player) "You have no key.";
+      give o ~locked;
+      Award(o);
+      "Unlocked.";
+    default:
+      "You can't do that.";
+  }
+];

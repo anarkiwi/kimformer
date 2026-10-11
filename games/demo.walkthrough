@@ -1,0 +1,36 @@
+e
+take lamp
+restart
+look
+e
+open box
+x box
+take key
+take lamp
+light lamp
+inventory
+w
+n
+open door
+unlock door with key
+open door
+n
+drop lamp
+d
+take crown
+u
+take lamp
+d
+take the crown
+save
+demo.sav
+drop crown
+restore
+demo.sav
+i
+xyzzy
+score
+verify
+u
+go south
+s

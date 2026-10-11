@@ -1,0 +1,31 @@
+name: Demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: docker
+          tags: kimformer-tools
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: make demo-check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: demo
+          path: |
+            build/demo.z3
+            build/demo.dfrotz.txt

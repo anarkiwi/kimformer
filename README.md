@@ -7,3 +7,4 @@ other `.z3` stories from an SD card on an sd2iec attached through the
 ## Documentation
 
 - [docs/design.md](docs/design.md) — architecture, memory map, interfaces
+- [docs/demo.md](docs/demo.md) — demo adventure: building, map, walkthrough
