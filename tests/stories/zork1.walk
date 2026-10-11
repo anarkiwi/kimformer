@@ -1,0 +1,412 @@
+# Zork I release 119, all 350 points. One command per line; '#' starts a comment.
+
+# Egg from the tree; lamp, sword and rope from the house
+n
+n
+u
+take egg
+d
+s
+e
+open window
+w
+w
+drop egg
+take lamp
+take sword
+e
+u
+turn on lamp
+take rope
+d
+w
+open case
+move rug
+open trap door
+
+# Troll, maze skeleton, cyclops
+d
+n
+kill troll with sword
+kill troll with sword
+kill troll with sword
+kill troll with sword
+kill troll with sword
+kill troll with sword
+w
+s
+e
+u
+take coins
+take key
+sw
+e
+s
+se
+ulysses
+e
+e
+put coins in case
+score
+
+# Painting via the studio chimney
+drop sword
+drop key
+drop rope
+open trap door
+d
+s
+e
+take painting
+n
+u
+w
+put painting in case
+score
+
+# Platinum bar, dam controls, torch, coffin and sceptre
+take rope
+d
+n
+e
+e
+e
+echo
+take bar
+u
+e
+n
+take match
+n
+take wrench
+take screwdriver
+push yellow button
+s
+s
+turn bolt with wrench
+drop wrench
+s
+sw
+s
+se
+e
+tie rope to railing
+d
+take torch
+turn off lamp
+drop bar
+drop match
+drop screwdriver
+s
+e
+take coffin
+w
+s
+pray
+e
+s
+se
+w
+w
+
+# Hades and the crystal skull
+open coffin
+take sceptre
+put coffin in case
+put torch in case
+score
+drop sceptre
+turn on lamp
+d
+n
+e
+e
+se
+e
+d
+take bar
+take match
+take screwdriver
+s
+take bell
+s
+take book
+take candles
+d
+d
+ring bell
+take candles
+light match
+light candles with match
+read book
+drop book
+s
+take skull
+n
+u
+n
+n
+n
+w
+w
+s
+u
+put skull in case
+put bar in case
+score
+
+# Coal mine: jade, bracelet, diamond
+drop candles
+e
+open sack
+take garlic
+w
+take torch
+turn off lamp
+d
+n
+e
+e
+s
+s
+rub mirror
+n
+w
+n
+w
+n
+take jade
+e
+turn on lamp
+put torch in basket
+put screwdriver in basket
+n
+d
+take bracelet
+e
+ne
+se
+sw
+d
+d
+s
+take coal
+n
+u
+u
+n
+e
+s
+n
+u
+s
+put coal in basket
+lower basket
+n
+d
+e
+ne
+se
+sw
+d
+d
+w
+drop all
+w
+take coal
+take screwdriver
+take torch
+s
+open lid
+put coal in machine
+close lid
+turn switch with screwdriver
+open lid
+take diamond
+n
+put diamond in basket
+put torch in basket
+put screwdriver in basket
+e
+take lamp
+take garlic
+take jade
+take bracelet
+e
+u
+u
+n
+e
+s
+n
+u
+s
+raise basket
+take diamond
+take torch
+turn off lamp
+w
+s
+e
+s
+d
+u
+put diamond in case
+put torch in case
+put jade in case
+put bracelet in case
+score
+
+# Drained reservoir: trunk, trident, pump
+turn on lamp
+d
+n
+e
+d
+ne
+n
+take trunk
+n
+take pump
+n
+take trident
+u
+n
+n
+w
+d
+u
+put trunk in case
+put trident in case
+score
+
+# Pot of gold at the end of the rainbow
+turn off lamp
+take sceptre
+e
+e
+e
+e
+e
+d
+n
+wave sceptre
+take gold
+sw
+u
+u
+nw
+w
+w
+w
+put gold in case
+put sceptre in case
+score
+
+# Frigid River: emerald, scarab
+turn on lamp
+d
+n
+e
+d
+ne
+e
+d
+inflate plastic with pump
+drop pump
+board boat
+launch
+wait
+wait
+wait
+wait
+take buoy
+e
+get out of boat
+take shovel
+ne
+dig sand with shovel
+dig sand with shovel
+dig sand with shovel
+dig sand with shovel
+take scarab
+drop shovel
+sw
+s
+s
+open buoy
+take emerald
+drop buoy
+w
+w
+sw
+u
+u
+nw
+w
+w
+w
+put emerald in case
+put scarab in case
+score
+
+# Thief's lair: the egg opens, chalice; canary and bauble
+take egg
+take sword
+turn on lamp
+w
+w
+u
+give egg to thief
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+kill thief with sword
+take egg
+take chalice
+d
+e
+e
+turn off lamp
+put chalice in case
+score
+e
+e
+n
+n
+take canary
+wind canary
+take bauble
+s
+e
+w
+w
+put canary in case
+put egg in case
+put bauble in case
+score
+
+# Stone barrow
+e
+e
+n
+w
+sw
+w
+quit

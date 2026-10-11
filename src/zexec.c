@@ -450,6 +450,7 @@ br:
 uint8_t zm_run(void) {
   uint8_t op, code, t, i;
   zstate = ZS_RUN;
+  rng = plat_entropy() | 1;
   zstart();
   while (zstate == ZS_RUN) {
     op_page = pc_page;
