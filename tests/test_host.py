@@ -130,8 +130,8 @@ def test_zork_restart_verify(runner, zork):
 def test_zork_wrap(runner, zork):
     story = runner.add(zork)
     commands = ["north", "east", "open window", "enter", "quit", "y"]
-    wide = runner.run("-w", 255, story, commands=commands)
-    narrow = runner.run("-w", 30, story, commands=commands)
+    wide = runner.run("-s", 1, "-w", 255, story, commands=commands)
+    narrow = runner.run("-s", 1, "-w", 30, story, commands=commands)
     assert flat(narrow) == flat(wide)
     assert max(map(len, text(narrow).splitlines())) <= 30
     assert max(map(len, text(wide).splitlines())) > 30
@@ -330,6 +330,42 @@ def test_launcher_empty(runner):
     result = runner.run(commands=["1"])
     assert result.returncode == 0
     assert text(result) == "No stories\n"
+
+
+VT_OPEN, VT_CLOSE = "\x1b[2;24r\x1b[24;1H", "\x1b[r\x1b[24;1H"
+STATUS = re.compile("\x1b7\x1b\\[1;1H\x1b\\[7m(.*?)\x1b\\[0m\x1b8")
+
+
+def statuses(result):
+    """The status lines drawn, after checking the VT100 set-up and reset."""
+    out = result.stdout.decode("latin-1")
+    assert out.startswith(VT_OPEN) and out.endswith(VT_CLOSE)
+    return STATUS.findall(out)
+
+
+def test_status_time(runner, clock):
+    result = runner.run("-v", "-w", 40, runner.add(clock), commands=["a", "b", "c"])
+    assert result.returncode == 0
+    assert statuses(result) == [
+        "Time: 12:05 AM".rjust(40),
+        "Clock Tower" + "Time: 1:30 PM".rjust(29),
+        "Clock Tower" + "Time: 12:00 PM".rjust(29),
+        "Clock Tower" + "Time: 11:59 PM".rjust(29),
+    ]
+
+
+def test_status_score(runner, zork, czech):
+    story = runner.add(zork)
+    result = runner.run("-v", "-s", 1, story, commands=["open mailbox", "north"])
+    lines = statuses(result)
+    assert lines == [
+        "West of House".ljust(62) + "Score: 0  Moves: 0",
+        "West of House".ljust(62) + "Score: 0  Moves: 1",
+        "North of House".ljust(62) + "Score: 0  Moves: 2",
+    ]
+    assert b"\x1b" not in runner.run("-s", 1, story, commands=["look"]).stdout
+    out = runner.run("-v", "-w", 255, runner.add(czech["z3"])).stdout
+    assert b"    Flags on: NO status," not in out and b"\n    Flags on:" in out
 
 
 @pytest.mark.parametrize("args", [(), ("-p", 3)])

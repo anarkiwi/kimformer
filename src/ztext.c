@@ -3,12 +3,17 @@
 
 uint8_t zm_width = 80;
 
+#define STATUS_LEFT 64
+#define STATUS_RIGHT 24
+
 static const char alpha[] = "abcdefghijklmnopqrstuvwxyz"
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                             "  0123456789.,!?_#'\"/\\-:()";
 
 static uint8_t col, pend, wlen, wbuf[64];
 static uint8_t screen_off, nstream3;
+static char *cap;
+static uint8_t ncap, capmax;
 static uint16_t s3_table[16], s3_len[16];
 
 static void emit_word(void) {
@@ -28,6 +33,11 @@ static void emit_word(void) {
 void zflush(void) { emit_word(); }
 
 void zputc(uint8_t c) {
+  if (cap) {
+    if (ncap < capmax && c >= 32 && c < 127)
+      cap[ncap++] = c;
+    return;
+  }
   if (nstream3) {
     uint8_t k = nstream3 - 1;
     zsb(s3_table[k] + 2 + s3_len[k]++, c);
@@ -241,6 +251,10 @@ void zsread(uint16_t text, uint16_t parse) {
   p = zdyn(parse, 2 + (maxw << 2));
   if (zstate != ZS_RUN)
     return;
+  if (PLAT_STATUS) {
+    zflush();
+    zstatus();
+  }
   i = max ? zreadline(t + 1, max - 1) : 0;
   t[i + 1] = 0;
   for (i = 1; (c = t[i]); i++)
@@ -301,3 +315,45 @@ void zstream(int16_t n, uint16_t table) {
 }
 
 void zstreams_reset(void) { screen_off = nstream3 = 0; }
+
+static void capture(char *buf, uint8_t max) {
+  cap = buf;
+  ncap = 0;
+  capmax = max;
+}
+
+static void captured(void) {
+  cap[ncap] = 0;
+  cap = 0;
+}
+
+void zstatus(void) {
+  char left[STATUS_LEFT + 1], right[STATUS_RIGHT + 1];
+  uint16_t g = zw(H_GLOBALS), a = zw(g), b;
+  capture(left, STATUS_LEFT);
+  if (a) {
+    a = obj_name(a);
+    str_set(a >> 8, a);
+    zprint_str();
+  }
+  captured();
+  capture(right, STATUS_RIGHT);
+  a = zw(g + 2);
+  b = zw(g + 4);
+  if (zb(H_FLAGS1) & 2) {
+    zputs("Time: ");
+    zprint_num(a % 12 ? a % 12 : 12);
+    zputc(':');
+    if (b < 10)
+      zputc('0');
+    zprint_num(b);
+    zputs(a < 12 ? " AM" : " PM");
+  } else {
+    zputs("Score: ");
+    zprint_num(a);
+    zputs("  Moves: ");
+    zprint_num(b);
+  }
+  captured();
+  plat_status(left, right);
+}

@@ -51,6 +51,21 @@ uint8_t sv_close(void);
 uint8_t dir_open(void);
 uint8_t dir_next(char *name);
 
+/* Status line.  PLAT_STATUS is nonzero when plat_status draws one: a
+ * compile-time constant on the 6502 (default 0), a run-time switch on the
+ * host.  When it is set, the interpreter clears Flags 1 bit 4 and calls
+ * plat_status before every read and on show_status with the location name
+ * and the score/moves or time text, to be right-aligned at zm_width. */
+#ifdef __mos__
+#ifndef PLAT_STATUS
+#define PLAT_STATUS 0
+#endif
+#else
+extern uint8_t plat_status_on;
+#define PLAT_STATUS plat_status_on
+#endif
+void plat_status(const char *left, const char *right);
+
 /* Leave the program. */
 void plat_exit(void);
 

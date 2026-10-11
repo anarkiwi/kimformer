@@ -16,15 +16,16 @@ through the KIMDOS adapter; the interpreter pages them in on demand.
 | `src/zobj.c` | object tree and properties |
 | `src/zexec.c` | operand decoding, opcodes, call stack, save/restore/restart |
 | `src/launcher.c` | story chooser, shared by all platforms |
+| `src/vt100.c` | VT100 status line (`plat_status`), shared by the KIM-1 and host platforms |
 | `src/zint.h` | interpreter internals shared by the core modules |
-| `src/host/` | host platform: stdio console, files in a directory, simulated 64K arena |
+| `src/host/` | host platform: stdio console, files in a directory, simulated 64K arena, optional VT100 status line |
 | `src/stub/` | do-nothing platform for the 6502 link and size check |
 | `src/kim/` | KIM-1 platform: monitor TTY, KIMDOS C library, RAM probe |
 | `extern/kimdos` | KIMDOS (submodule): IEC/DOS library for llvm-mos, KIM-1 linker script |
 | `games/` | Inform 6 source of the demo adventure |
-| `kimformer/` | Python tooling: fixture fetching, KIM-1 simulator harness |
+| `kimformer/` | Python tooling: fixture fetching, KIM-1 simulator harness, cycle profiler |
 | `tests/` | pytest suites for the host build and the 6502 build |
-| `tests/stories/` | Inform 6 probe story exercising opcodes, streams, parsing and errors |
+| `tests/stories/` | Inform 6 probe stories: opcodes, streams, parsing and errors; the time status line |
 
 ## Memory
 
@@ -74,10 +75,10 @@ in the interpreter.
 ## Interpreter
 
 - Version 3 only; all v3 opcodes.
-- Header: Flags 1 bit 4 (status line not available) set and bit 5 (split
-  screen available) cleared; interpreter number 6, version `A`, standard
-  revision 1.1.
-  `show_status`, `split_window`, `set_window`, `sound_effect` are no-ops;
+- Header: Flags 1 bit 5 (split screen available) cleared, bit 4 (status
+  line not available) set unless the platform draws a status line
+  (`PLAT_STATUS`); interpreter number 6, version `A`, standard revision 1.1.
+  `split_window`, `set_window`, `sound_effect` are no-ops;
   `output_stream` 3 (memory, nested up to 16) is supported; 2 sets or clears
   the transcript bit (Flags 2 bit 0) only, as the console is the hardcopy;
   4 is ignored; `input_stream` is ignored.
@@ -103,8 +104,14 @@ in the interpreter.
   search on their 4-byte encoding (6 Z-characters) and splits on spaces and
   the dictionary's word separators. The interpreter does not echo the line
   break; the platform's terminal does.
-- `random`: 16-bit xorshift (7, 9, 8); random(0) reseeds from `plat_entropy`,
-  random(-n) seeds with n.
+- Status line (with `PLAT_STATUS`): before every `sread` and on
+  `show_status`, the short name of the object in global 0 is rendered into a
+  buffer (`zputc` captures while a buffer is set) and the right side is
+  `Score: S  Moves: M` from globals 1 and 2, or `Time: H:MM AM` (12-hour,
+  spec 8.2.3.2) when Flags 1 bit 1 is set; both go to `plat_status`.
+- `random`: 16-bit xorshift (7, 9, 8), seeded from `plat_entropy` when
+  `zm_run` starts; random(0) reseeds from `plat_entropy`, random(-n) seeds with
+  n.
 - `save`/`restore` prompt `File [NAME.SAV]: ` (default: the story name with its
   extension replaced by `.SAV`) and write/read: magic `KZ3\1`, release (2),
   serial (6), checksum (2) as in the header, then little endian dynamic size
@@ -117,15 +124,41 @@ in the interpreter.
 
 ## KIM-1 platform
 
-- Console via the monitor's `OUTCH`/`GETCH` (input is echoed by the TTY
-  hardware; `'\n'` is sent as CR LF).
-- Story: channel 2, opened with `<name>,P,R`. Seek is the sd2iec command
-  `P` + chr($62) + 4-byte little-endian offset on channel 15. Reads are
-  `kd_read` of 256 bytes.
-- Save: channel 1 with `@0:<name>` (PRG); restore: channel 3 `<name>,P,R`.
-- Directory: `kd_dir_*` from the KIMDOS C library.
-- Entropy: the RIOT interval timer plus a counter run while waiting for keys.
-- Exit: jump to the monitor (`$1C4F`).
+`src/kim/plat_kim.c`, linked with the KIMDOS C library sources and its KIM-1
+link script (`extern/kimdos/c/kim1/link.ld`): image at $2000, 1K soft stack
+up to the page-aligned `__kim_end`.
+
+- Console: `kd_putc`/`kd_getc` (the monitor's `OUTCH`/`GETCH`); `'\n'` is
+  sent as CR LF. The TTY echoes input, CR included, so `plat_getc` sends LF
+  after a CR.
+- Status line (default; `make kim VT100=0` for a plain TTY): `src/vt100.c`.
+  Start-up sets the scroll region to lines 2-24 (`ESC[2;24r`) and moves to
+  line 24; `plat_status` sends `ESC 7`, `ESC[1;1H`, `ESC[7m`, the left text
+  padded so the right text ends at `zm_width`, `ESC[0m`, `ESC 8`; exit
+  resets the region (`ESC[r`) and moves to line 24.
+- RAM: `plat_pages` probes $04-$13 and `__kim_end`/256-$FE in ascending
+  order, writing and reading back $55 and $AA at offset 0 of each page and
+  restoring the byte.
+- Story: channel 2, opened with `<name>,P,R`. `st_seek` skips a seek to the
+  current page, otherwise sends the sd2iec command `P` + chr($62) + 4-byte
+  little-endian offset on channel 15 (as `kd_seek` does, but reading the
+  status line itself so it can show it). `st_next` is `kd_read` of 256
+  bytes.
+- Save: channel 1 with `@0:<name>` (PRG, replacing); restore: channel 3
+  `<name>,P,R`. A short transfer or a drive error after the close fails
+  `sv_close`.
+- Errors: after every open, seek and save close the drive status is read; a
+  code of 20 or more prints the status line (`No drive` if no device
+  answers).
+- Directory: `kd_dir_*` from the KIMDOS C library, channel 0. A listing the
+  launcher leaves unfinished is closed by the next open of channel 0.
+- Entropy: the RIOT interval timer ($1706) is read after every key and
+  folded into a 16-bit value (rotate left 3, xor); `plat_entropy` mixes in a
+  fresh timer read. The timer runs freely at the clock rate, so the
+  sub-millisecond timing of keystrokes decides the seed.
+- Exit: `_Exit`, a jump to the monitor (`$1C4F`). The image can be started
+  again with `2000 G`: no initialised variable is written (the RNG state is
+  BSS, seeded at story start), and BSS is cleared at start.
 
 File names from the drive are PETSCII. The launcher prints `c & 0x7F` and
 matches the suffix `.Z3` case-insensitively on that.
@@ -134,9 +167,9 @@ matches the suffix `.Z3` case-insensitively on that.
 
 | Suite | What |
 | --- | --- |
-| `tests/test_host.py` | host build: CZECH compliance, the demo walkthrough, Zork I opening moves, save/restore, restart, small caches that force eviction, the probe story, load errors, launcher |
+| `tests/test_host.py` | host build: CZECH compliance, the demo walkthrough, Zork I opening moves, save/restore, restart, small caches that force eviction, the probe story, load errors, launcher, status lines (`-v`) |
 | `tests/test_fixtures.py` | fixture download, verification and Inform compilation |
-| `tests/test_kim.py` | 6502 build on the KIMDOS py65 simulator with a simulated drive: launcher, demo walkthrough, Zork I first move, save/restore |
+| `tests/test_kim.py` | 6502 build on the KIMDOS py65 simulator (PAL-II RAM map) with the sd2iec drive model: launcher, re-run without reload, no drive, DOS errors, too little RAM, demo walkthrough, Zork I opening with save/restore and status lines, restore in a fresh session, a small-RAM run that evicts, the simulator CLI and profiler |
 
 Fixtures that are not ours (CZECH, Zork I from historicalsource/zork1, the
 Inform 6 compiler source) are downloaded once into `tests/fixtures/cache/`
