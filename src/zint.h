@@ -6,8 +6,15 @@
 #include "zm.h"
 
 #define NOINLINE __attribute__((noinline))
-#define ZSTACK_WORDS 1024
+#define INLINE static inline __attribute__((always_inline))
+#ifdef __mos__
+#define ZP __attribute__((section(".zp.bss")))
+#else
+#define ZP
+#endif
 #define ZS_RUN 0xFF
+#define ZS_PAST 0xFE
+#define ZRUNNING (zstate >= ZS_PAST)
 #define ZNL 13
 
 /* Header fields. */
@@ -34,25 +41,50 @@ extern uint8_t page_map[512];
 extern uint8_t *dyn;
 extern uint16_t static_base;
 extern uint8_t dyn_pages;
+extern uint16_t story_pages;
 extern uint8_t zstate;
 extern uint8_t pc_hi, str_hi;
-extern uint16_t pc_page, str_page;
-extern uint8_t pc_off, str_off;
+extern uint16_t pc_page ZP, str_page;
+extern uint8_t str_off;
+extern uint8_t *pc_base ZP;
+extern uint8_t pc_off ZP;
 extern char story_name[17];
 
 void zfatal(uint8_t code);
 uint8_t zpage(uint16_t page);
+uint8_t zframe(void);
 uint8_t zb(uint16_t addr);
 uint16_t zw(uint16_t addr);
 void zsb(uint16_t addr, uint8_t v);
 void zsw(uint16_t addr, uint16_t v);
+uint16_t umul(uint16_t a, uint16_t b);
 uint8_t *zdyn(uint16_t addr, uint16_t len);
-uint8_t pc_byte(void);
+void pc_next(void);
+void pc_load(void);
 void pc_set(uint16_t page, uint8_t off);
 void pc_rel(int16_t d);
 void str_set(uint16_t page, uint8_t off);
 uint8_t zreload(void);
 uint8_t zverify(void);
+
+/* The byte at the PC; advances it. */
+INLINE uint8_t pc_byte(void) {
+  uint8_t b = pc_base[pc_off];
+  if (!++pc_off)
+    pc_next();
+  return b;
+}
+
+uint16_t pc_word_slow(void);
+
+/* The big-endian word at the PC; advances it. */
+INLINE uint16_t pc_word(void) {
+  uint8_t o = pc_off;
+  if (o >= 0xFE)
+    return pc_word_slow();
+  pc_off = o + 2;
+  return pc_base[o] << 8 | pc_base[(uint8_t)(o + 1)];
+}
 
 /* ztext.c */
 void zputc(uint8_t c);
@@ -68,6 +100,7 @@ void zstreams_reset(void);
 void zstatus(void);
 
 /* zobj.c */
+extern uint16_t obj_base;
 uint8_t obj_rel(uint16_t o, uint8_t field);
 uint8_t obj_attr(uint16_t o, uint8_t a, uint8_t op);
 void obj_insert(uint16_t o, uint16_t d);

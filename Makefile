@@ -11,7 +11,7 @@ HOST_CC ?= cc
 CORE := src/zmem.c src/ztext.c src/zobj.c src/zexec.c src/launcher.c
 HDRS := $(wildcard src/*.h)
 
-.PHONY: all host kim demo test format clean
+.PHONY: all host kim demo test format clean bench
 all: host
 
 format:
@@ -55,11 +55,14 @@ coverage:
 	    --print-summary --fail-under-line 85
 
 # 6502 check: link the core with a stub platform and report its size.
-MOS_CFLAGS ?= -Os -flto -Wall -Wextra -Werror
+# MOS_LTO_ZP: zero page ($20-$EE) left to the compiler's LTO allocator after
+# the interpreter's own ZP variables.
+MOS_LTO_ZP ?= 183
+MOS_CFLAGS ?= -Os -flto -mlto-zp=$(MOS_LTO_ZP) -Wall -Wextra -Werror
 MOS_SIM_CC ?= $(DOCKER_RUN) $(MOS_IMAGE) mos-sim-clang
 MOS_SIZE ?= $(DOCKER_RUN) --entrypoint llvm-size $(MOS_IMAGE)
 MOS_NM ?= $(DOCKER_RUN) --entrypoint llvm-nm $(MOS_IMAGE)
-MOS_TEXT_MAX ?= 12288
+MOS_TEXT_MAX ?= 13312
 
 mos-check: $(CORE) $(HDRS) src/stub/plat_stub.c
 	@mkdir -p $(BUILD)/mos
@@ -90,10 +93,16 @@ $(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)
 	    -Wl,-Map=$(BUILD)/kimformer.map -o $(BUILD)/kimformer $(KIM_SRC)
 	mv $(BUILD)/kimformer $@
 	$(MOS_NM) -n $(BUILD)/kimformer.elf > $(BUILD)/kimformer.sym
+	@awk '$$NF == ".zp.data" && $$3 != "0" { print "zero page data is not loaded"; exit 1 }' \
+	    $(BUILD)/kimformer.map
 	@end=$$(awk '$$3 == "__kim_end" { print $$1 }' $(BUILD)/kimformer.sym); \
 	    free=$$((0xFF - 0x$$end / 256)); \
 	    echo "__kim_end \$$$$end, $$free free pages to \$$FEFF"; \
 	    test $$free -ge $(KIM_MIN_PAGES) || { echo "need $(KIM_MIN_PAGES)"; exit 1; }
+
+# Interpreter cycles per Zork I move on the simulated KIM-1 (needs make kim).
+bench:
+	python3 -m kimformer.prof --bench --image $(BUILD)/kimformer.bin
 
 $(BUILD)/kim-vt100-$(VT100):
 	@mkdir -p $(@D)

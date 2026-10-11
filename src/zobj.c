@@ -1,23 +1,45 @@
 /* Object tree and properties. */
 #include "zint.h"
 
+uint16_t obj_base;
+
 static uint16_t oaddr(uint16_t o) {
   if (!o)
     zfatal(ZM_ERR_OBJECT);
-  return zw(H_OBJECTS) + 53 + (o << 3) + o;
+  return obj_base + (o << 3) + o;
 }
 
-uint8_t obj_rel(uint16_t o, uint8_t field) { return zb(oaddr(o) + field); }
+/* The object entry at a when it lies in dynamic memory, else 0. */
+static uint8_t *odyn(uint16_t a) {
+  return a < static_base && static_base - a >= 9 ? dyn + a : 0;
+}
+
+uint8_t obj_rel(uint16_t o, uint8_t field) {
+  uint16_t a = oaddr(o);
+  uint8_t *p = odyn(a);
+  return p ? p[field] : zb(a + field);
+}
 
 uint8_t obj_attr(uint16_t o, uint8_t a, uint8_t op) {
   uint16_t ad;
-  uint8_t m, v;
+  uint8_t m, v, *p;
   if (a > 31) {
     zfatal(ZM_ERR_OBJECT);
     return 0;
   }
-  ad = oaddr(o) + (a >> 3);
+  ad = oaddr(o);
+  p = odyn(ad);
+  ad += a >> 3;
   m = 0x80 >> (a & 7);
+  if (p) {
+    p += a >> 3;
+    v = *p;
+    if (op == ATTR_SET)
+      *p = v | m;
+    else if (op == ATTR_CLEAR)
+      *p = v & ~m;
+    return v & m;
+  }
   v = zb(ad);
   if (op == ATTR_SET)
     zsb(ad, v | m);

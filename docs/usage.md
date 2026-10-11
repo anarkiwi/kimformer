@@ -76,7 +76,7 @@ below $1400) and load and start it at $0400. Then:
 
 ```
 >L KIMFORMER
-$2000-$6112
+$2000-$6152
 >Q
 ```
 
@@ -144,35 +144,51 @@ an error.
 ## Memory
 
 The interpreter probes every page of $0400-$13FF and `__kim_end`-$FEFF
-(writes and reads back two patterns, then restores the byte) and uses those
-that hold. A story's dynamic memory (Zork I: 45 pages) must fit one unbroken
-run of RAM pages; every other page found is a cache frame for the rest of
-the story, which is paged in from the card on demand. At least 3 cache
-frames are needed.
+(inverts a byte and reads it back, then restores it) and uses those that
+hold. A page that mirrors other memory, as on a board that does not decode
+every address line, is skipped. A story's dynamic memory (Zork I: 45 pages)
+must fit one unbroken run of RAM pages; every other page found is a cache
+frame for the rest of the story, which is paged in from the card on demand.
+At least 3 cache frames are needed.
 
 | Board | Pages | Zork I |
 | --- | --- | --- |
-| PAL-II defaults | 16 at $04-$13, 136 at $77-$FE | 107 cache frames of 340 story pages |
-| RAM $0000-$03FF, $2000-$AFFF | 57 at $77-$AF | 12 cache frames: about 35 page loads a move |
-| RAM $0000-$03FF, $2000-$A3FF | 45 at $77-$A3 | `Error 3`: no cache frames left |
+| PAL-II defaults | 16 at $04-$13, 138 at $75-$FE | 109 cache frames of 340 story pages |
+| RAM $0000-$03FF, $2000-$AFFF | 59 at $75-$AF | 14 cache frames: 25-48 page loads a move |
+| RAM $0000-$03FF, $2000-$A3FF | 47 at $75-$A3 | `Error 3`: too few cache frames |
 
 With fewer frames the game runs the same but reads the card more often: a
-page miss costs a seek and a 256-byte read, about 0.25 s. The RAM must be
-fully decoded: a page that mirrors another one passes the probe.
+page miss costs a seek and a 256-byte read, about 0.17 s.
 
 ## Performance
 
-Measured on the simulated KIM-1 (`python -m kimformer.sim --cycles`; 1 MHz,
-the KIMDOS drive model's IEC timing, the TTY at 8300 cycles per character,
-about 1200 baud) with Zork I and the 15 opening moves of
-`tests/test_host.py`:
+Measured on the simulated KIM-1 (1 MHz, the KIMDOS drive model's IEC timing,
+the TTY at 8300 cycles per character, about 1200 baud) with Zork I and the 15
+opening moves of `tests/test_host.py`. `make bench` (`python -m kimformer.prof
+--bench`) plays them with a fixed entropy source and reports, per move, the
+interpreter's cycles without story I/O and console time, the I/O cycles and
+the seeks:
 
-| | Interpreter only | With TTY output |
-| --- | --- | --- |
-| start to the menu | 0.2 s | 0.8 s |
-| load (152 pages) | 24.3 s | 28.6 s with the opening text |
-| one move, PAL-II | 1.7-3.3 s, 1-5 page loads | 3.0-7.8 s |
-| one move, 12 cache frames | 6.6-13.4 s, 24-50 page loads | |
+| | Interpreter | With story I/O | With TTY output |
+| --- | --- | --- | --- |
+| start to the menu | 0.2 s | | 0.8 s |
+| load (154 pages) | | 23.2 s | 27.5 s with the opening text |
+| one move, PAL-II | 0.74-1.17 s, mean 1.00 s | 0.80-1.99 s, 0-4 page loads | 2.2-6.5 s |
+| one move, 14 cache frames | 0.75-1.19 s | 5.8-11.6 s, 25-48 page loads | |
+
+`make bench` before and after the interpreter core was reworked for the
+6502 (fixed locals and split 8-bit evaluation stack, zero page PC pointer,
+inline operand and local access, clock replacement):
+
+| | Interpreter cycles per move | Image end | PAL-II cache frames |
+| --- | --- | --- | --- |
+| before | 2,021,291 (1,546,987-2,324,577) | $7700 | 107 |
+| after | 997,653 (739,986-1,166,768) | $7500 | 109 |
+
+For reference, Infocom's own C64 interpreter (Version H, hand-written 6502)
+takes about 1.0M cycles of interpreter time per Zork I move (release 88,
+nine opening moves in VICE, page loads excluded; about 0.9M without the C64's
+interrupt and video overhead).
 
 The status line is about 85 characters a move, 0.7 s at 1200 baud; a faster
 terminal line or `VT100=0` saves most of that.

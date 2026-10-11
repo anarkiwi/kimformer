@@ -73,7 +73,8 @@ void zputs(const char *s) {
 }
 
 void zprint_num(uint16_t v) {
-  static const uint16_t pow10[] = {10000, 1000, 100, 10, 1};
+  static const uint16_t pow10[]
+      __attribute__((section(".rodata.pow10"))) = {10000, 1000, 100, 10, 1};
   uint8_t i, d, lead = 1;
   if (v & 0x8000) {
     zputc('-');
@@ -106,47 +107,62 @@ static uint8_t str_byte(void) {
   return b;
 }
 
+/* Decodes the Z-string at the string position: 3 Z-characters a word, the
+ * last word with bit 15 set; an abbreviation's string is decoded in the
+ * middle of its word, which is resumed after it. */
 void zprint_str(void) {
-  static const uint8_t shift[] = {0, 5, 10};
-  uint16_t w = 0, sv_w = 0, sv_page = 0, a;
-  uint8_t n = 0, c, alph = 0, st = 0, hi = 0, sv_n = 0, sv_off = 0, nest = 0;
+  uint8_t zc[3], sv[3] = {0, 0, 0}, k = 3, sk = 0, c, b, alph = 0, st = 0,
+                 high = 0;
+  uint8_t nest = 0, end = 0, sv_end = 0, sv_off = 0;
+  uint16_t sv_page = 0, a;
   for (;;) {
-    if (!n) {
-      if (w & 0x8000) {
+    if (k == 3) {
+      if (end) {
         if (!nest)
           break;
-        nest = 0;
+        nest = alph = 0;
         str_set(sv_page, sv_off);
-        w = sv_w;
-        n = sv_n;
-        alph = 0;
+        zc[0] = sv[0];
+        zc[1] = sv[1];
+        zc[2] = sv[2];
+        k = sk;
+        end = sv_end;
         continue;
       }
-      if (zstate != ZS_RUN)
+      if (!ZRUNNING)
         break;
-      w = (uint16_t)str_byte() << 8;
-      w |= str_byte();
-      n = 3;
+      b = str_byte();
+      end = b & 0x80;
+      zc[0] = b >> 2 & 31;
+      zc[1] = b << 3 & 24;
+      b = str_byte();
+      zc[1] |= b >> 5;
+      zc[2] = b & 31;
+      k = 0;
     }
-    c = (w >> shift[--n]) & 31;
+    c = zc[k++];
     if (st) {
       if (st < 4) {
         if (!nest) {
           sv_page = str_page;
           sv_off = str_off;
-          sv_w = w;
-          sv_n = n;
+          sv[0] = zc[0];
+          sv[1] = zc[1];
+          sv[2] = zc[2];
+          sk = k;
+          sv_end = end;
           a = zw(zw(H_ABBREV) + ((st - 1) << 6) + (c << 1));
           str_set(a >> 7, a << 1);
           nest = 1;
-          w = n = 0;
+          k = 3;
+          end = 0;
         }
         st = 0;
       } else if (st == 4) {
-        hi = c;
+        high = c;
         st = 5;
       } else {
-        zputc(hi << 5 | c);
+        zputc(high << 5 | c);
         st = 0;
       }
       continue;
@@ -156,14 +172,14 @@ void zprint_str(void) {
     else if (c < 4)
       st = c;
     else if (c < 6)
-      alph = c - 3;
+      alph = c == 4 ? 26 : 52;
     else {
-      if (alph == 2 && c == 6)
+      if (alph == 52 && c == 6)
         st = 4;
-      else if (alph == 2 && c == 7)
+      else if (alph == 52 && c == 7)
         zputc(ZNL);
       else
-        zputc(alpha[alph * 26 + c - 6]);
+        zputc(alpha[alph + c - 6]);
       alph = 0;
     }
   }
@@ -231,7 +247,7 @@ static uint16_t lookup(const uint8_t *s, uint8_t len) {
   base = dict_seps + nseps + 3;
   while (lo < hi) {
     mid = (lo + hi) >> 1;
-    e = base + mid * elen;
+    e = base + umul(mid, elen);
     for (j = 0; j < 4 && (c = zb(e + j)) == key[j]; j++)
       ;
     if (j == 4)
@@ -249,7 +265,7 @@ void zsread(uint16_t text, uint16_t parse) {
   uint16_t e;
   t = zdyn(text, max + 1);
   p = zdyn(parse, 2 + (maxw << 2));
-  if (zstate != ZS_RUN)
+  if (!ZRUNNING)
     return;
   if (PLAT_STATUS) {
     zflush();
