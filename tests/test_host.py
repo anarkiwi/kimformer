@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+from kimformer import walk
 from tests.conftest import REPO, flat, text
 
 ZM_ERR_OPEN, ZM_ERR_VERSION, ZM_ERR_MEMORY, ZM_ERR_OPCODE = 1, 2, 3, 4
@@ -370,10 +371,8 @@ def test_status_score(runner, zork, czech):
 
 @pytest.mark.parametrize("args", [(), ("-p", 3)])
 def test_demo_walkthrough(runner, demo, args):
-    walk = (REPO / "games" / "demo.walkthrough").read_text(encoding="ascii")
+    script = (REPO / "games" / "demo.walkthrough").read_text(encoding="ascii")
     expect = (REPO / "games" / "demo.expect").read_text(encoding="ascii")
-    result = runner.run("-s", 5, *args, runner.add(demo), stdin=walk)
+    result = runner.run("-s", 5, *args, runner.add(demo), stdin=script)
     assert result.returncode == 0
-    lines = iter(text(result).splitlines())
-    for want in expect.splitlines():
-        assert any(want in line for line in lines), want
+    assert walk.unmatched(expect.splitlines(), text(result).splitlines()) is None

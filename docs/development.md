@@ -59,9 +59,14 @@ seeds. After changing the walk or the RNG, list the seeds that still win with
 `python -m kimformer.walk tests/stories/zork1.walk --seeds 1-200` (after
 `make host`) and set `SEED` in the test to one of them.
 
-`tests/test_kim.py` needs `make kim` and runs the image on the simulated
-KIM-1; its Zork I tests are marked `zork` (`-m 'not zork'` skips them
-locally; CI runs them).
+`tests/test_kim.py` and `tests/test_board.py` need `make kim` and run the
+image on the simulated KIM-1; the Zork I tests are marked `zork`
+(`-m 'not zork'` skips them locally; CI runs them).
+
+`tests/test_board.py` runs `kimformer.board` against `tests/fake_kim.py`, a
+KIM-1 on a pty: the monitor commands kimtape uses, and `G` running the
+simulated PAL-II on what was loaded. The plain TTY case needs
+`make kim VT100=0 BUILD=build/plain`.
 
 ## KIM-1 simulator
 

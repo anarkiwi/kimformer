@@ -25,6 +25,14 @@ VT_STATUS = re.compile("\x1b7\x1b\\[1;1H\x1b\\[7m(.*?)\x1b\\[0m\x1b8", re.S)
 VT_REGION = re.compile("\x1b\\[[0-9;]*[rH]")
 
 
+def strip_vt100(text, status=None):
+    """text without the interpreter's VT100 sequences; the status lines it
+    draws are appended to status if given."""
+    if status is not None:
+        status += VT_STATUS.findall(text)
+    return VT_REGION.sub("", VT_STATUS.sub("", text))
+
+
 def drive_name(path):
     """The name an sd2iec shows for a FAT file: upper-case PETSCII."""
     return Path(path).name.upper().encode("latin-1")
@@ -94,12 +102,7 @@ class Machine:
                 progress(self, self.cycles - before)
             if self.reason != CYCLES:
                 break
-        return self.screen(self.output())
-
-    def screen(self, text):
-        """text without VT100 sequences; status lines go to self.status."""
-        self.status += VT_STATUS.findall(text)
-        return VT_REGION.sub("", VT_STATUS.sub("", text))
+        return strip_vt100(self.output(), self.status)
 
     def output(self):
         """Output since the last call, with line breaks as '\\n'; a CR at the

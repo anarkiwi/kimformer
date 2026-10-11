@@ -34,6 +34,22 @@ end of the image and its stack) and the free pages above it, and fails if
 fewer than `KIM_MIN_PAGES` (96: Zork I's 45 pages of dynamic memory and a
 cache) remain.
 
+### Release images
+
+Each [GitHub release](https://github.com/anarkiwi/kimformer/releases) carries
+the images, so no toolchain is needed:
+
+| Asset | |
+| --- | --- |
+| `kimformer.ptp` | paper tape, VT100 build: `kimtape load --port /dev/ttyUSB0 kimformer.ptp --go 2000` |
+| `kimformer.prg` | the same for the SD card, copied as `KIMFORMER.PRG` |
+| `kimformer-tty.ptp`, `kimformer-tty.prg` | the plain TTY build (`VT100=0`); copy the `.prg` as `KIMFORMER.PRG` |
+| `demo.z3` | the [demo adventure](demo.md), for the SD card |
+
+[kimtape](https://github.com/anarkiwi/kimtape) is the only tool needed
+(`pip install git+https://github.com/anarkiwi/kimtape`); Zork I is not
+included.
+
 ## The SD card
 
 Copy the `.z3` files to the card. sd2iec shows FAT names upper case, and a
@@ -101,6 +117,29 @@ last character. Output is wrapped at 80 columns.
 Fatal interpreter errors print `Error <code> at $<PC>` and return to the
 menu; loading errors print `Error <code>` (codes in `src/zm.h`: 1 the file
 could not be opened or read, 2 not version 3, 3 not enough memory).
+
+## Smoke test on a board
+
+`python -m kimformer.board` loads the interpreter with the monitor, checks it
+and plays a script over the TTY line, as a check of a board, its SD card and
+a build:
+
+```
+python -m kimformer.board --port /dev/ttyUSB0 [--baud 1200] [--image build/kimformer.ptp]
+    [--no-load] [--story DEMO.Z3] [--script FILE] [--expect FILE] [--timeout S] [--log FILE]
+```
+
+Press RS first. The image is loaded, verified (and reloaded if it does not
+verify) and started at $2000; `--no-load` starts the image already in memory.
+The story is picked from the menu by name, then each line of the script is
+typed once the interpreter waits for input (the `>` prompt, after the status
+line on a VT100 build, or a file name prompt). With no `--script` the card
+needs `DEMO.Z3` (from `make demo` or a release): it plays
+`games/demo.walkthrough` and checks `games/demo.expect`. Each line's time from
+sending to the next prompt is printed; the transcript, without escape
+sequences, goes to `logs/board-<time>.log`. The exit status is 1 if an
+expected line is missing; no prompt within `--timeout` seconds of a line is
+an error.
 
 ## Memory
 
