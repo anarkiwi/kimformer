@@ -17,13 +17,16 @@ make host        # build/zm, the same interpreter on the host
 make test coverage mos-check
 ```
 
-Releases carry `kimformer.ptp`, `kimformer.prg` and the demo story ready to
-use; the KIMDOS shell comes from the
+Releases carry `kimformer.ptp`, `kimformer.prg` (and `-tty` builds for a
+plain TTY) ready to use, with two stories: `demo.z3`, the
+[demo adventure](docs/demo.md), and `loh.z5`, The Library Of Horror, the
+[PunyInform](https://github.com/johanberntsson/PunyInform) demo game compiled
+for version 5 (MIT, `loh-LICENSE.txt`). The KIMDOS shell comes from the
 [KIMDOS releases](https://github.com/anarkiwi/kimdos/releases).
 
 ## Use
 
-Copy the stories to the SD card. Then load the interpreter at $2000
+Copy the stories to the SD card, e.g. `DEMO.Z3`, `LOH.Z5` or `ZORK1.Z3`. Then load the interpreter at $2000
 one of two ways and pick a story from the menu.
 
 From paper tape (no SD card copy needed):
