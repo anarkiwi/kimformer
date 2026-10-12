@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kimformer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Z-machine (versions 3, 4, 5 and 8) for the KIM-1, PAL-II and replicas"
 readme = "README.md"
 license = "Apache-2.0"
