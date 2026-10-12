@@ -176,7 +176,7 @@ int main(void) {
   iec_jiffy = KIM_JIFFY;
   if (PLAT_STATUS)
     vt100_open();
-  puts_nl("KIMFORMER Z-MACHINE V3");
+  puts_nl("KIMFORMER Z-MACHINE");
   launcher();
   plat_exit();
   return 0;

@@ -1,4 +1,4 @@
-/* Z-machine version 3 interpreter. */
+/* Z-machine interpreter for story versions 3, 4, 5 and 8. */
 #ifndef ZM_H
 #define ZM_H
 
@@ -8,7 +8,7 @@
 enum {
   ZM_OK = 0,      /* story ended with @quit */
   ZM_ERR_OPEN,    /* story file could not be opened or read */
-  ZM_ERR_VERSION, /* not a version 3 story */
+  ZM_ERR_VERSION, /* not a version 3, 4, 5 or 8 story */
   ZM_ERR_MEMORY,  /* dynamic memory does not fit the free RAM */
   ZM_ERR_OPCODE,  /* illegal opcode */
   ZM_ERR_STACK,   /* evaluation or call stack overflow/underflow */
@@ -27,8 +27,9 @@ uint8_t zm_load(const char *name);
  * diagnostic with the code and the PC.  Returns ZM_OK or the error. */
 uint8_t zm_run(void);
 
-/* Interactive story chooser: lists *.Z3 files, lets the user pick one, then
- * loads and runs it; repeats until the user quits.  Returns on Q. */
+/* Interactive story chooser: lists *.Z3, *.Z4, *.Z5 and *.Z8 files, lets the
+ * user pick one, then loads and runs it; repeats until the user quits.  Returns
+ * on Q. */
 void launcher(void);
 
 #endif

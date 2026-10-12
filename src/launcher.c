@@ -1,12 +1,14 @@
 /* Story chooser shared by all platforms. */
 #include "zint.h"
 
-static uint8_t is_z3(const char *n) {
-  uint8_t l = 0;
+/* A story name: it ends in .z3, .z4, .z5 or .z8, in either case. */
+static uint8_t is_story(const char *n) {
+  uint8_t l = 0, d;
   while (n[l])
     l++;
   return l > 3 && (n[l - 3] & 0x7F) == '.' &&
-         ((n[l - 2] & 0x7F) | 0x20) == 'z' && (n[l - 1] & 0x7F) == '3';
+         ((n[l - 2] & 0x7F) | 0x20) == 'z' && (d = n[l - 1] & 0x7F) >= '3' &&
+         d <= '8' && d != '6' && d != '7';
 }
 
 static uint8_t scan(uint8_t pick, char *name) {
@@ -14,7 +16,7 @@ static uint8_t scan(uint8_t pick, char *name) {
   if (dir_open())
     return 0;
   while (dir_next(name)) {
-    if (!is_z3(name))
+    if (!is_story(name))
       continue;
     if (++n == pick)
       return n;
@@ -38,7 +40,7 @@ void launcher(void) {
       return;
     }
     zputs("Story (Q quits): ");
-    len = zreadline(buf, sizeof buf);
+    len = zreadline(buf, sizeof buf, 0);
     if (len && (buf[0] | 0x20) == 'q')
       return;
     for (i = k = 0; i < len && buf[i] >= '0' && buf[i] <= '9'; i++)

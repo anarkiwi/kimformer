@@ -1,0 +1,64 @@
+# The Library Of Horror (PunyInform demo game, release 10 / serial 231010),
+# all 100 points. One command per line; '#' starts a comment. The line \k
+# presses k at a quote box's read_char "press any key" pause.
+
+# Gloomy Street
+look
+x windows
+what is a grue
+what is a library
+inventory
+s
+
+# The Library: the manager sends us for a book (10)
+x manager
+x shelves
+talk to manager
+talk to manager
+score
+e
+
+# Staircase: first descent shows a quote box and waits for a key
+x boxes
+d
+\k
+x frank
+talk to frank
+e
+s
+
+# Storage Room: Frank blocks the dark passage
+x sign
+e
+w
+
+# Repair Shop: empty the box and put it over Frank (20)
+x box
+take book
+take box
+inventory
+put box on frank
+e
+
+# Dark chamber: second quote box, then burn the evil book (50)
+e
+\k
+x book
+red
+take red book
+take candles
+open red book
+x red book
+burn red book with candles
+
+# Out before the fire spreads (20)
+w
+n
+w
+u
+w
+n
+
+# Game over prompt
+full
+quit

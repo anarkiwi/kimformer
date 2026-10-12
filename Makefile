@@ -7,10 +7,8 @@ DOCKER_RUN := docker run --rm -u $(shell id -u):$(shell id -g) \
 MOS_CC ?= $(DOCKER_RUN) $(MOS_IMAGE) mos-common-clang
 CLANG_FORMAT ?= $(DOCKER_RUN) --entrypoint clang-format $(MOS_IMAGE)
 HOST_CC ?= cc
-# PAGEDYN=1: dynamic memory paged with static memory (ZM_PAGE_DYN).
-PAGEDYN ?= 0
 
-CORE := src/zmem.c src/ztext.c src/zobj.c src/zexec.c src/launcher.c
+CORE := src/zmem.c src/ztext.c src/zobj.c src/zexec.c src/launcher.c src/vt100.c
 HDRS := $(wildcard src/*.h)
 
 .PHONY: all host kim demo test format clean bench
@@ -24,9 +22,8 @@ clean:
 
 # Host build, tests and coverage.
 HOST_CFLAGS ?= -std=c99 -Wall -Wextra -Werror -O2
-HOST_SRC := $(CORE) src/vt100.c src/host/plat_host.c src/host/main.c
-HOST_CFG := $(BUILD)/host-pagedyn-$(PAGEDYN)
-HOST_HDRS := $(HDRS) src/host/host.h $(HOST_CFG)
+HOST_SRC := $(CORE) src/host/plat_host.c src/host/main.c
+HOST_HDRS := $(HDRS) src/host/host.h
 COV_OBJ := $(patsubst src/%.c,$(BUILD)/cov/%.o,$(HOST_SRC))
 
 .PHONY: cov coverage mos-check fixtures
@@ -35,19 +32,14 @@ host: $(BUILD)/zm
 
 $(BUILD)/zm: $(HOST_SRC) $(HOST_HDRS)
 	@mkdir -p $(@D)
-	$(HOST_CC) $(HOST_CFLAGS) -DZM_TRACE -DZM_STATS -DZM_PAGE_DYN=$(PAGEDYN) -o $@ $(HOST_SRC)
-
-$(HOST_CFG):
-	@mkdir -p $(@D)
-	rm -f $(BUILD)/host-pagedyn-*
-	touch $@
+	$(HOST_CC) $(HOST_CFLAGS) -DZM_TRACE -DZM_STATS -o $@ $(HOST_SRC)
 
 cov: $(BUILD)/cov/zm
 
 $(BUILD)/cov/%.o: src/%.c $(HOST_HDRS)
 	@mkdir -p $(@D)
 	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -O0 --coverage -DZM_TRACE -DZM_STATS \
-	    -DZM_PAGE_DYN=$(PAGEDYN) -c -o $@ $<
+	    -c -o $@ $<
 
 $(BUILD)/cov/zm: $(COV_OBJ)
 	$(HOST_CC) --coverage -o $@ $^
@@ -66,9 +58,8 @@ coverage:
 # 6502 check: link the core with a stub platform and report its size.
 # MOS_LTO_ZP: zero page ($20-$EE) left to the compiler's LTO allocator after
 # the interpreter's own ZP variables.
-MOS_LTO_ZP ?= 183
+MOS_LTO_ZP ?= 175
 MOS_CFLAGS ?= -Os -flto -mlto-zp=$(MOS_LTO_ZP) -Wall -Wextra -Werror
-MOS_DEFS := -DZM_PAGE_DYN=$(PAGEDYN)
 MOS_SIM_CC ?= $(DOCKER_RUN) $(MOS_IMAGE) mos-sim-clang
 MOS_SIZE ?= $(DOCKER_RUN) --entrypoint llvm-size $(MOS_IMAGE)
 MOS_NM ?= $(DOCKER_RUN) --entrypoint llvm-nm $(MOS_IMAGE)
@@ -76,7 +67,7 @@ MOS_TEXT_MAX ?= 13312
 
 mos-check: $(CORE) $(HDRS) src/stub/plat_stub.c
 	@mkdir -p $(BUILD)/mos
-	$(MOS_SIM_CC) $(MOS_CFLAGS) $(MOS_DEFS) -o $(BUILD)/mos/zm.sim $(CORE) src/stub/plat_stub.c
+	$(MOS_SIM_CC) $(MOS_CFLAGS) -o $(BUILD)/mos/zm.sim $(CORE) src/stub/plat_stub.c
 	$(MOS_NM) --size-sort -S $(BUILD)/mos/zm.sim.elf | tail -12
 	$(MOS_SIZE) $(BUILD)/mos/zm.sim.elf | tee $(BUILD)/mos/size.txt
 	@awk 'NR == 2 && $$1 > $(MOS_TEXT_MAX) { print "text " $$1 " exceeds $(MOS_TEXT_MAX)"; exit 1 }' $(BUILD)/mos/size.txt
@@ -89,7 +80,7 @@ mos-check: $(CORE) $(HDRS) src/stub/plat_stub.c
 # $(BUILD) where the llvm-mos container can see it.
 KIMDOS_PKG := $(shell python3 -m kimdos.clib 2>/dev/null)
 KIMDOS_C := $(BUILD)/kimdos-c
-KIM_SRC := $(CORE) src/vt100.c src/kim/plat_kim.c $(KIMDOS_C)/kim1/crt.s \
+KIM_SRC := $(CORE) src/kim/plat_kim.c $(KIMDOS_C)/kim1/crt.s \
     $(KIMDOS_C)/src/iec.s $(KIMDOS_C)/src/dos.c $(KIMDOS_C)/src/dir.c \
     $(KIMDOS_C)/src/con.s
 KIM_DEPS := $(KIM_SRC) $(HDRS) $(KIMDOS_C)/include/kimdos.h \
@@ -105,9 +96,9 @@ $(KIMDOS_C)/%: $(KIMDOS_PKG)/%
 	@mkdir -p $(@D)
 	cp $< $@
 
-$(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY)-pagedyn-$(PAGEDYN)
+$(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY)
 	@mkdir -p $(@D)
-	$(MOS_CC) $(MOS_CFLAGS) $(MOS_DEFS) -DPLAT_STATUS=$(VT100) -DKIM_JIFFY=$(JIFFY) -I $(KIMDOS_C)/include -T $(KIMDOS_C)/kim1/link.ld \
+	$(MOS_CC) $(MOS_CFLAGS) -DPLAT_STATUS=$(VT100) -DKIM_JIFFY=$(JIFFY) -I $(KIMDOS_C)/include -T $(KIMDOS_C)/kim1/link.ld \
 	    -Wl,-Map=$(BUILD)/kimformer.map -o $(BUILD)/kimformer $(KIM_SRC)
 	mv $(BUILD)/kimformer $@
 	$(MOS_NM) -n $(BUILD)/kimformer.elf > $(BUILD)/kimformer.sym
@@ -122,7 +113,7 @@ $(BUILD)/kimformer.bin: $(KIM_DEPS) $(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY)-p
 bench:
 	python3 -m kimformer.prof --bench --image $(BUILD)/kimformer.bin
 
-$(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY)-pagedyn-$(PAGEDYN):
+$(BUILD)/kim-vt100-$(VT100)-jiffy-$(JIFFY):
 	@mkdir -p $(@D)
 	rm -f $(BUILD)/kim-vt100-*
 	touch $@

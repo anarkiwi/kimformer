@@ -3,16 +3,18 @@
 
 #include "zint.h"
 
-uint8_t page_map[512];
+uint8_t pm0[256], pm_hi[8];
 uint8_t *dyn;
-uint16_t static_base;
-uint8_t dyn_pages;
-uint8_t zstate;
+uint16_t static_base, pin_base;
+uint8_t dyn_pages, pin_pages, zm_pin_extra = ZM_PIN_EXTRA;
+uint8_t zstate, zver, zpk;
 uint8_t pc_hi, str_hi;
 uint16_t pc_page ZP, str_page;
 uint8_t str_off;
 uint8_t *pc_base ZP;
 uint8_t pc_off ZP;
+uint16_t pk_page;
+uint8_t pk_off;
 char story_name[17];
 uint16_t story_pages;
 
@@ -21,35 +23,20 @@ static uint8_t nframes, hand;
 static uint8_t dyn_hi;
 static uint8_t story_open;
 static uint8_t own_lo[256], own_hi[256], used[256];
-#if !ZM_PAGE_DYN
-static uint8_t data_page, data_hi;
-#endif
 
-#if ZM_PAGE_DYN
 #define DIRTY 2
 #define USE(h) (used[h] |= 1)
 #define UNUSE(h) (used[h] &= DIRTY)
-uint16_t pin_base;
-uint8_t pin_pages, zm_pin_extra = ZM_PIN_EXTRA;
-#else
-#define USE(h) (used[h] = 1)
-#define UNUSE(h) (used[h] = 0)
-#define pin_pages dyn_pages
-#endif
 
 #ifdef ZM_STATS
 uint32_t zstat[ZS_N];
 #define ZS_INC(i) zstat[i]++
-#else
-#define ZS_INC(i)
-#endif
 
-#if defined(ZM_STATS) && ZM_PAGE_DYN
 /* Shadow of the frame pool under clock replacement that evicts dirty pages,
  * counting the loads and write-backs it would make.  op: 0 reference, 1
  * write, 2 drop, 3 reference that leaves the used flag of a resident page. */
 static uint16_t sh_pg[255];
-static uint8_t sh_fl[255], sh_slot[512], sh_hand;
+static uint8_t sh_fl[255], sh_slot[2048], sh_hand;
 
 static void shadow(uint16_t p, uint8_t op) {
   uint8_t s = sh_slot[p], i;
@@ -100,24 +87,30 @@ static void shadow_init(void) {
     h = frames[i];
     p = (uint16_t)own_hi[h] << 8 | own_lo[h];
     sh_fl[i] = 0;
-    sh_pg[i] = page_map[p] == h ? p : 0xFFFF;
-    if (page_map[p] == h)
+    sh_pg[i] = *pm_at(p) == h ? p : 0xFFFF;
+    if (*pm_at(p) == h)
       sh_slot[p] = i + 1;
   }
 }
 #define SHADOW(p, op) shadow(p, op)
 #else
+#define ZS_INC(i)
 #define SHADOW(p, op) (void)(p)
 #endif
 
+uint16_t err_page;
+uint8_t err_off;
+
 void zfatal(uint8_t code) {
-  if (ZRUNNING)
+  if (ZRUNNING) {
     zstate = code;
+    err_page = pc_page;
+    err_off = pc_off;
+  }
 }
 
 uint8_t zframe(void) {
-  uint16_t p;
-  uint8_t h;
+  uint8_t h, *m;
   for (;;) {
     h = frames[hand];
     if (++hand == nframes)
@@ -128,30 +121,27 @@ uint8_t zframe(void) {
       break;
     UNUSE(h);
   }
-#if !ZM_PAGE_DYN
-  if (h == data_hi)
-    data_hi = 0;
-#endif
-  p = (uint16_t)own_hi[h] << 8 | own_lo[h];
-  if (page_map[p] == h)
-    page_map[p] = 0;
+  m = pm_at((uint16_t)own_hi[h] << 8 | own_lo[h]);
+  if (*m == h)
+    *m = 0;
   return h;
 }
 
 uint8_t zpage(uint16_t p) {
-  uint8_t h;
+  uint8_t h, *m;
   if (p >= story_pages) {
     zfatal(ZM_ERR_ADDRESS);
     p = 0;
   }
   SHADOW(p, 0);
-  h = page_map[p];
+  m = pm_at(p);
+  h = *m;
   if (!h) {
     h = zframe();
     ZS_INC(ZS_LOADS);
     st_seek(p);
     st_next(PAGE_PTR(h));
-    page_map[p] = h;
+    *m = h;
     own_lo[h] = p;
     own_hi[h] = p >> 8;
   }
@@ -159,7 +149,6 @@ uint8_t zpage(uint16_t p) {
   return h;
 }
 
-#if ZM_PAGE_DYN
 static void zdirty(uint8_t h, uint16_t p) {
   if (!(used[h] & DIRTY)) {
     used[h] |= DIRTY;
@@ -181,10 +170,10 @@ uint8_t zdpage(uint8_t p, uint8_t mode) {
     h = zpage(p);
   else {
     SHADOW(p, 0);
-    h = page_map[p];
+    h = pm0[p];
     if (!h) {
       h = zframe();
-      page_map[p] = h;
+      pm0[p] = h;
       own_lo[h] = p;
       own_hi[h] = 0;
     }
@@ -197,7 +186,7 @@ uint8_t zdpage(uint8_t p, uint8_t mode) {
 /* The frame of page p for writing: dynamic pages beyond the pinned ones are
  * marked dirty. */
 static uint8_t zwpage(uint8_t p) {
-  uint8_t h = page_map[p];
+  uint8_t h = pm0[p];
   if (!h)
     h = zpage(p);
   if (p >= pin_pages)
@@ -216,7 +205,7 @@ uint8_t *zdynw(uint16_t a, uint16_t len) {
 }
 
 uint8_t zb(uint16_t a) {
-  uint8_t p = a >> 8, h = page_map[p];
+  uint8_t p = a >> 8, h = pm0[p];
   if (!h)
     return PAGE_PTR(zpage(p))[(uint8_t)a];
   USE(h);
@@ -225,7 +214,7 @@ uint8_t zb(uint16_t a) {
 }
 
 uint16_t zw(uint16_t a) {
-  uint8_t p = a >> 8, h = page_map[p], *q;
+  uint8_t p = a >> 8, h = pm0[p], *q;
   if (!h || (uint8_t)a == 0xFF)
     return (uint16_t)zb(a) << 8 | zb(a + 1);
   USE(h);
@@ -245,24 +234,6 @@ NOINLINE void zsw(uint16_t a, uint16_t v) {
   zsb(a, v >> 8);
   zsb(a + 1, v);
 }
-#else
-uint8_t zb(uint16_t a) {
-  uint8_t p = a >> 8;
-  if (a < static_base)
-    return dyn[a];
-  if (p != data_page || !data_hi) {
-    data_hi = zpage(p);
-    data_page = p;
-  }
-  return PAGE_PTR(data_hi)[(uint8_t)a];
-}
-
-uint16_t zw(uint16_t a) {
-  if (a < static_base - 1)
-    return (uint16_t)dyn[a] << 8 | dyn[a + 1];
-  return (uint16_t)zb(a) << 8 | zb(a + 1);
-}
-#endif
 
 NOINLINE uint8_t *zdyn(uint16_t a, uint16_t len) {
   if (a >= static_base || static_base - a < len) {
@@ -272,29 +243,24 @@ NOINLINE uint8_t *zdyn(uint16_t a, uint16_t len) {
   return dyn + a;
 }
 
-#if !ZM_PAGE_DYN
-NOINLINE void zsb(uint16_t a, uint8_t v) {
-  if (a < static_base)
-    dyn[a] = v;
-  else
-    zfatal(ZM_ERR_ADDRESS);
-}
-
-NOINLINE void zsw(uint16_t a, uint16_t v) {
-  if (a < static_base - 1) {
-    dyn[a] = v >> 8;
-    dyn[a + 1] = v;
-  } else
-    zfatal(ZM_ERR_ADDRESS);
-}
-#endif
-
 NOINLINE uint16_t umul(uint16_t a, uint16_t b) {
   uint16_t r = 0;
   for (; b; b >>= 1, a <<= 1)
     if (b & 1)
       r += a;
   return r;
+}
+
+/* pk_page and pk_off of the packed address a. */
+void zunpack(uint16_t a) {
+  uint8_t i = zpk, top = 0, hi = a >> 8, lo = a;
+  do {
+    top = top << 1 | hi >> 7;
+    hi = hi << 1 | lo >> 7;
+    lo <<= 1;
+  } while (--i);
+  pk_page = (uint16_t)top << 8 | hi;
+  pk_off = lo;
 }
 
 void pc_load(void) {
@@ -314,7 +280,6 @@ NOINLINE void pc_next(void) {
 }
 
 void pc_set(uint16_t page, uint8_t off) {
-  page &= 0x1FF;
   pc_off = off;
   if (page != pc_page) {
     pc_page = page;
@@ -336,7 +301,7 @@ NOINLINE void pc_rel(int16_t d) {
 }
 
 void str_set(uint16_t page, uint8_t off) {
-  str_page = page & 0x1FF;
+  str_page = page;
   str_off = off;
   str_hi = 0;
 }
@@ -346,33 +311,27 @@ static void zdots(uint8_t n) {
     plat_putc('.');
 }
 
-static uint8_t load_dyn(uint8_t p, uint8_t dots) {
-  for (; p < pin_pages; p++) {
-    if (dots)
-      zdots(p);
+static uint8_t load_dyn(uint8_t p) {
+  for (; p < pin_pages; p++)
     if (!st_next(PAGE_PTR(dyn_hi + p)))
       return 0;
-  }
   return 1;
 }
 
 uint8_t zreload(void) {
-  uint8_t f2 = dyn[H_FLAGS2 + 1] & 3;
-#if ZM_PAGE_DYN
-  uint8_t p, h;
+  uint8_t f2 = dyn[H_FLAGS2 + 1] & 3, p, h;
   for (p = pin_pages; p < dyn_pages; p++)
-    if ((h = page_map[p])) {
+    if ((h = pm0[p])) {
 #ifdef ZM_STATS
       zstat[ZS_DIRTY] -= used[h] >> 1;
 #endif
       SHADOW(p, 2);
-      page_map[p] = used[h] = 0;
+      pm0[p] = used[h] = 0;
       if (h == pc_hi)
         pc_page = 0xFFFF;
     }
-#endif
   st_seek(0);
-  if (!load_dyn(0, 0))
+  if (!load_dyn(0))
     return 0;
   dyn[H_FLAGS2 + 1] = (dyn[H_FLAGS2 + 1] & ~3) | f2;
   return 1;
@@ -381,8 +340,8 @@ uint8_t zreload(void) {
 uint8_t zverify(void) {
   uint8_t *b = PAGE_PTR(zframe());
   uint16_t len = zw(H_LENGTH), p, sum = 0;
-  uint16_t pages = len >> 7;
-  uint8_t rem = len << 1, i;
+  uint16_t pages = len >> (8 - zpk);
+  uint8_t rem = len << zpk, i;
   st_seek(0);
   for (p = 0; p < pages || (p == pages && rem); p++) {
     st_next(b);
@@ -399,7 +358,6 @@ uint8_t zverify(void) {
   return sum == zw(H_CHECKSUM);
 }
 
-#if ZM_PAGE_DYN
 static uint16_t dw(uint16_t a) { return (uint16_t)dyn[a] << 8 | dyn[a + 1]; }
 
 /* Extends the pinned prefix to the page holding byte end - 1, within dynamic
@@ -415,12 +373,11 @@ static uint8_t pin_to(uint16_t end, uint8_t max) {
     return 1;
   pin_pages = n;
   pin_base = n < dyn_pages ? n << 8 : static_base;
-  return load_dyn(p, 0);
+  return load_dyn(p);
 }
-#endif
 
 uint8_t zm_load(const char *name) {
-  uint8_t n, i, start = 0, len = 0, best = 0, blen = 0;
+  uint8_t n, i, start = 0, len = 0, best = 0, blen = 0, npm;
   uint16_t p, w;
   for (i = 0; i < sizeof story_name - 1 && (story_name[i] = name[i]); i++)
     ;
@@ -450,59 +407,50 @@ uint8_t zm_load(const char *name) {
   st_seek(0);
   if (!st_next(dyn))
     return ZM_ERR_OPEN;
-  if (dyn[H_VERSION] != 3)
+  zver = dyn[H_VERSION];
+  if (zver < 3 || zver == 6 || zver == 7 || zver > 8)
     return ZM_ERR_VERSION;
-  static_base = (uint16_t)dyn[H_STATIC] << 8 | dyn[H_STATIC + 1];
+  zpk = (zver >> 2) + 1;
+  static_base = dw(H_STATIC);
   w = (static_base >> 8) + !!(uint8_t)static_base;
-#if ZM_PAGE_DYN
-  if (static_base < 0x40)
+  if (static_base < 0x40 || w > 0xFF)
     return ZM_ERR_MEMORY;
   dyn_pages = w;
   pin_pages = 1;
   pin_base = static_base < 0x100 ? static_base : 0x100;
-  w = dw(H_OBJECTS) + 71;
+  w = dw(H_OBJECTS) + (zver == 3 ? 71 : 140);
   p = dw(H_GLOBALS) + 480;
   if (!pin_to(p > w ? p : w, blen) ||
       (w <= pin_base && !pin_to(dw(w - 2), blen)) ||
       !pin_to((pin_pages + zm_pin_extra) << 8, blen))
     return ZM_ERR_OPEN;
-#else
-  if (static_base < 0x40 || w > blen)
-    return ZM_ERR_MEMORY;
-  dyn_pages = w;
-#endif
-  w = (uint16_t)dyn[H_LENGTH] << 8 | dyn[H_LENGTH + 1];
-  story_pages = w ? (w + 127) >> 7 : 512;
+  w = dw(H_LENGTH);
+  i = 8 - zpk;
+  story_pages = w ? (w >> i) + !!(w & ((1 << i) - 1)) : 256 << zpk;
+  npm = (story_pages - 1) >> 8;
   nframes = n - pin_pages;
   for (i = best; i < nframes; i++)
     frames[i] = frames[i + pin_pages];
-  if (nframes < dyn_pages - pin_pages + 3)
+  if (nframes < (uint16_t)npm + dyn_pages - pin_pages + 3)
     return ZM_ERR_MEMORY;
-  memset(page_map, 0, sizeof page_map);
+  nframes -= npm;
+  memset(pm0, 0, sizeof pm0);
+  for (i = 0; i < npm; i++)
+    memset(PAGE_PTR(pm_hi[i + 1] = frames[nframes + i]), 0, 0x100);
   memset(own_lo, 0, sizeof own_lo);
   memset(own_hi, 0, sizeof own_hi);
   memset(used, 0, sizeof used);
-#if ZM_PAGE_DYN
   pc_hi = str_hi = hand = 0;
-#else
-  pc_hi = str_hi = hand = data_hi = 0;
-#endif
   pc_page = 0xFFFF;
-  for (i = 0; i < pin_pages; i++)
-    page_map[i] = dyn_hi + i;
-#if ZM_PAGE_DYN
-  for (i = 0; i < pin_pages; i++)
+  for (i = 0; i < pin_pages; i++) {
+    pm0[i] = dyn_hi + i;
     zdots(i);
-#else
-  zdots(0);
-  if (!load_dyn(1, 1))
-    return ZM_ERR_OPEN;
-#endif
+  }
   for (p = pin_pages, i = 0; i < nframes && p < story_pages; i++, p++) {
     zdots(p);
     if (!st_next(PAGE_PTR(frames[i])))
       break;
-    page_map[p] = frames[i];
+    *pm_at(p) = frames[i];
     own_lo[frames[i]] = p;
     own_hi[frames[i]] = p >> 8;
   }
@@ -510,9 +458,7 @@ uint8_t zm_load(const char *name) {
   memset(zstat, 0, sizeof zstat);
   zstat[ZS_FRAMES] = nframes;
   zstat[ZS_PIN] = pin_pages;
-#if ZM_PAGE_DYN
   shadow_init();
-#endif
 #endif
   plat_putc('\n');
   return ZM_OK;

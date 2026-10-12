@@ -12,6 +12,7 @@ uint8_t zm_trace;
 #define OP1(n) (0x20 + (n))
 #define OP0(n) (0x30 + (n))
 #define OPV(n) (0x40 + (n))
+#define OPX(n) (0x60 + (n))
 #define SLT(x, y) ((int16_t)(x) < (int16_t)(y))
 #define CS_BYTES 1536
 #define A opnd[0]
@@ -28,21 +29,20 @@ static char sname[17];
 
 /* Evaluation stack: word i is es_hi[i] << 8 | es_lo[i], esp words in use,
  * the current routine's from esb.  Locals 1..nloc of the current routine are
- * lv_lo/lv_hi[1..nloc].  A call pushes onto the byte stack cs the caller's
- * locals (low, high byte each), then its PC page (low, high), PC offset,
- * store variable, esb and nloc. */
+ * lv_lo/lv_hi[1..nloc], nargs of them passed.  A call pushes onto the byte
+ * stack cs the caller's locals (low, high byte each), then its PC page (low,
+ * high), PC offset, store variable, esb and a frame byte: nloc, nargs << 4,
+ * bit 7 set when the result is discarded. */
 static uint8_t es_lo[256], es_hi[256];
 static uint8_t lv_lo[16], lv_hi[16];
 static uint8_t cs[CS_BYTES];
 static uint8_t esp ZP, esb ZP, nloc ZP;
 static uint16_t csp;
-static uint16_t opnd[4] ZP;
-static uint8_t nops ZP;
+static uint16_t opnd[8] ZP;
+static uint8_t nops ZP, nargs;
 static uint8_t *gv_lo ZP, *gv_hi ZP;
 static uint8_t gmax;
 static uint16_t globals, rng;
-static uint16_t op_page ZP;
-static uint8_t op_off ZP;
 
 static NOINLINE void push(uint16_t v) {
   uint8_t i = esp;
@@ -148,12 +148,15 @@ INLINE void store(uint16_t x) {
     var_set(v, x);
 }
 
-static void zret(uint16_t x) {
-  uint8_t *p, n, v, i, j;
-  if (csp < FRAME_HDR || (n = cs[csp - 1]) > 15 ||
-      csp < (uint16_t)(FRAME_HDR + (n << 1)) || cs[csp - 2] > esb) {
+/* Pops the current routine's frame; returns its frame byte, the store
+ * variable in ret_var. */
+static uint8_t ret_var;
+static uint8_t frame_pop(void) {
+  uint8_t *p, f = csp < FRAME_HDR ? 0xFF : cs[csp - 1], n = f & 15, i, j;
+  if (f == 0xFF || csp < (uint16_t)(FRAME_HDR + (n << 1)) ||
+      cs[csp - 2] > esb) {
     zfatal(ZM_ERR_STACK);
-    return;
+    return 0x80;
   }
   csp -= FRAME_HDR + (n << 1);
   p = cs + csp;
@@ -162,11 +165,26 @@ static void zret(uint16_t x) {
     lv_hi[i] = p[j + 1];
   }
   nloc = n;
+  nargs = f >> 4 & 7;
   esp = esb;
   esb = p[j + 4];
-  v = p[j + 3];
+  ret_var = p[j + 3];
   pc_set(p[j + 1] << 8 | p[j], p[j + 2]);
-  var_set(v, x);
+  return f;
+}
+
+static void zret(uint16_t x) {
+  if (!(frame_pop() & 0x80))
+    var_set(ret_var, x);
+}
+
+/* throw: returns x from the routine whose catch gave frame. */
+static void zthrow(uint16_t x, uint16_t frame) {
+  if (frame > csp)
+    zfatal(ZM_ERR_STACK);
+  while (csp > frame && ZRUNNING)
+    frame_pop();
+  zret(x);
 }
 
 /* Branch data after a test with result cond: bit 7 the sense, bit 6 a
@@ -189,11 +207,14 @@ static void branch(uint8_t cond) {
   }
 }
 
-static void zcall(void) {
-  uint8_t v = pc_byte(), n, i, j, *p;
+/* Calls routine A with the other operands as arguments; st: its result is
+ * stored. */
+static void zcall(uint8_t st) {
+  uint8_t v = st ? pc_byte() : 0, n, i, j, *p;
   uint16_t w;
-  if (!opnd[0]) {
-    var_set(v, 0);
+  if (!A) {
+    if (st)
+      var_set(v, 0);
     return;
   }
   if (csp + FRAME_HDR + (nloc << 1) > CS_BYTES) {
@@ -210,10 +231,16 @@ static void zcall(void) {
   p[j + 2] = pc_off;
   p[j + 3] = v;
   p[j + 4] = esb;
-  p[j + 5] = nloc;
+  p[j + 5] = nloc | nargs << 4 | (st ? 0 : 0x80);
   csp += j + FRAME_HDR;
   esb = esp;
-  pc_set(opnd[0] >> 7, opnd[0] << 1);
+  nargs = nops - 1;
+  if (zpk == 1)
+    pc_set(A >> 7, A << 1);
+  else {
+    zunpack(A);
+    pc_set(pk_page, pk_off);
+  }
   n = pc_byte();
   if (n > 15) {
     zfatal(ZM_ERR_STACK);
@@ -221,7 +248,10 @@ static void zcall(void) {
   }
   nloc = n;
   for (i = 1; i <= n; i++) {
-    w = pc_word();
+    if (zver < 5)
+      w = pc_word();
+    else
+      w = 0;
     if (i < nops)
       w = opnd[i];
     lv_lo[i] = w;
@@ -230,13 +260,30 @@ static void zcall(void) {
 }
 
 static void zinit(void) {
-  dyn[H_FLAGS1] = (dyn[H_FLAGS1] & ~0x30) | (PLAT_STATUS ? 0 : 0x10);
+  uint16_t x;
+  if (zver == 3)
+    dyn[H_FLAGS1] = (dyn[H_FLAGS1] & ~0x30) | (PLAT_STATUS ? 0 : 0x10);
+  else {
+    dyn[H_FLAGS1] = PLAT_STATUS ? 0x1C : 0x10;
+    dyn[H_FLAGS2] &= ~1;
+    dyn[H_FLAGS2 + 1] &= 7;
+    dyn[0x20] = PLAT_STATUS ? ZROWS : 255;
+    dyn[0x21] = zm_width;
+    dyn[0x22] = 0;
+    dyn[0x23] = zm_width;
+    dyn[0x24] = 0;
+    dyn[0x25] = dyn[0x20];
+    dyn[0x26] = dyn[0x27] = dyn[0x2C] = dyn[0x2D] = 1;
+    x = zw(H_EXT);
+    if (x && zw(x) > 3)
+      zsw(x + 8, 0);
+  }
   dyn[0x1E] = 6;
   dyn[0x1F] = 'A';
   dyn[0x32] = 1;
   dyn[0x33] = 1;
   globals = zw(H_GLOBALS);
-  obj_base = zw(H_OBJECTS) + 53;
+  obj_base = zw(H_OBJECTS) + (zver == 3 ? 53 : 112);
   gmax = 15;
   if (globals >= 32 && globals < pin_base) {
     gv_lo = dyn + globals - 32;
@@ -255,13 +302,14 @@ static uint16_t zseed(void) {
 static void zstart(void) {
   uint16_t a = zw(H_PC);
   zinit();
-  esp = esb = nloc = 0;
+  ztext_init();
+  esp = esb = nloc = nargs = 0;
   csp = 0;
   zstreams_reset();
+  zscreen_reset();
   pc_set(a >> 8, a);
 }
 
-#if ZM_PAGE_DYN
 /* The free part of the call stack if it holds 256 bytes, else 0. */
 uint8_t *zscratch(void) { return csp <= CS_BYTES - 0x100 ? cs + csp : 0; }
 
@@ -277,10 +325,6 @@ static void dyn_xfer(uint8_t save) {
                                            : ZD_DIRTY)),
             n > 0x100 ? 0x100 : n);
 }
-#define DYN_XFER(save) dyn_xfer(save)
-#else
-#define DYN_XFER(save) sv_xfer(dyn, static_base)
-#endif
 
 /* Moves the evaluation stack, the locals and the call stack to or from the
  * save file. */
@@ -292,6 +336,7 @@ static void stack_xfer(void) {
   sv_xfer(cs, csp);
 }
 
+/* save (1) or restore (0): 0 on failure, else 1 saved or 2 restored. */
 static uint8_t zsave(uint8_t save) {
   uint8_t n, f2;
   for (n = 0; story_name[n] && story_name[n] != '.' && n < 12; n++)
@@ -300,7 +345,7 @@ static uint8_t zsave(uint8_t save) {
   zputs("File [");
   zputs(sname);
   zputs("]: ");
-  n = zreadline((uint8_t *)sname, 16);
+  n = zreadline((uint8_t *)sname, 16, 0);
   if (n)
     sname[n] = 0;
   if (sv_open(sname, save))
@@ -313,36 +358,37 @@ static uint8_t zsave(uint8_t save) {
   sh.csp = csp;
   sh.esp = esp;
   sh.esb = esb;
-  sh.nloc = nloc;
+  sh.nloc = nloc | nargs << 4;
   sh.pc[0] = pc_page >> 8;
   sh.pc[1] = pc_page;
   sh.pc[2] = pc_off;
   if (save) {
     sv_xfer((uint8_t *)&sh, sizeof sh);
-    DYN_XFER(1);
+    dyn_xfer(1);
     stack_xfer();
     return !sv_close();
   }
   sv_xfer((uint8_t *)&rh, sizeof rh);
   for (n = 0; n < 16 && ((uint8_t *)&rh)[n] == ((uint8_t *)&sh)[n]; n++)
     ;
-  if (n < 16 || rh.csp > CS_BYTES || rh.esb > rh.esp || rh.nloc > 15) {
+  if (n < 16 || rh.csp > CS_BYTES || rh.esb > rh.esp || rh.nloc & 0x80) {
     sv_close();
     return 0;
   }
   f2 = dyn[H_FLAGS2 + 1] & 3;
-  DYN_XFER(0);
+  dyn_xfer(0);
   csp = rh.csp;
   esp = rh.esp;
   esb = rh.esb;
-  nloc = rh.nloc;
+  nloc = rh.nloc & 15;
+  nargs = rh.nloc >> 4;
   stack_xfer();
   if (sv_close())
     zfatal(ZM_ERR_OPEN);
   dyn[H_FLAGS2 + 1] = (dyn[H_FLAGS2 + 1] & ~3) | f2;
   zinit();
   pc_set((uint16_t)rh.pc[0] << 8 | rh.pc[1], rh.pc[2]);
-  return 1;
+  return 2;
 }
 
 /* An operand of type t: 0 large constant, 1 small constant, 2 variable. */
@@ -352,6 +398,140 @@ static uint16_t operand(uint8_t t) {
   if (t == 1)
     return pc_byte();
   return var_fast(pc_byte());
+}
+
+/* The opcodes of later versions and the rare ones, kept out of exec. */
+static NOINLINE void exec_x(uint8_t code) {
+  uint16_t r;
+  uint8_t c;
+  switch (code) {
+  case OP2(28):
+    zthrow(A, B);
+    return;
+  case OP0(12):
+    if (PLAT_STATUS && zver == 3)
+      zstatus();
+    return;
+  case OP0(5):
+  case OP0(6):
+  case OPX(0):
+  case OPX(1):
+    r = code >= OPX(0) && nops ? 0 : zsave(code == OP0(5) || code == OPX(0));
+    if (zver > 3)
+      goto st;
+    c = r;
+    goto br;
+  case OP0(7):
+    if (!zreload())
+      zfatal(ZM_ERR_OPEN);
+    zstart();
+    return;
+  case OP0(13):
+    c = zverify();
+    goto br;
+  case OP0(15):
+    c = 1;
+    goto br;
+  case OPV(10):
+    if (zver > 3)
+      zsplit_window(A);
+    return;
+  case OPV(11):
+    if (zver > 3)
+      zset_window(A);
+    return;
+  case OPV(13):
+    zerase_window(A);
+    return;
+  case OPV(14):
+    if (A == 1)
+      zerase_line();
+    return;
+  case OPV(15):
+    zset_cursor(A, B);
+    return;
+  case OPV(16):
+    zget_cursor(A);
+    return;
+  case OPV(17):
+    zset_style(A);
+    return;
+  case OPV(18):
+    zbuffer_mode(A);
+    return;
+  case OPV(21):
+    if (A - 1 < 2)
+      plat_putc(7);
+    return;
+  case OPV(22):
+    r = zread_char();
+    goto st;
+  case OPV(23):
+    for (r = B, c = nops > 3 ? opnd[3] : 0x82; opnd[2];
+         opnd[2]--, r += c & 0x7F)
+      if ((c & 0x80 ? zw(r) : zb(r)) == A)
+        goto stbr;
+    r = 0;
+    goto stbr;
+  case OPV(27):
+    ztokenise(A, B, nops > 2 ? opnd[2] : 0, nops > 3 && opnd[3]);
+    return;
+  case OPV(28):
+    zencode_text(A, B, opnd[2], opnd[3]);
+    return;
+  case OPV(29):
+    r = SLT(opnd[2], 0) ? -opnd[2] : opnd[2];
+    if (!B)
+      while (r--)
+        zsb(A + r, 0);
+    else if (r != opnd[2] || B < A)
+      for (; r--; A++, B++)
+        zsb(B, zb(A));
+    else
+      while (r--)
+        zsb(B + r, zb(A + r));
+    return;
+  case OPV(30):
+    zprint_table(A, B, nops > 2 ? opnd[2] : 1, nops > 3 ? opnd[3] : 0);
+    return;
+  case OPV(31):
+    c = A <= nargs;
+    goto br;
+  case OPX(2):
+  case OPX(3):
+    r = A;
+    for (c = B; c & 0x80 && c; c++)
+      r = code == OPX(3) ? (uint16_t)((int16_t)r >> 1) : r >> 1;
+    for (; c && !(c & 0x80); c--)
+      r <<= 1;
+    goto st;
+  case OPX(4):
+    r = A < 2;
+    goto st;
+  case OPX(9):
+    r = 0xFFFF;
+    goto st;
+  case OPX(10):
+    r = 0;
+    goto st;
+  case OPX(11):
+    zputc(A > 126 || A < 32 ? '?' : A);
+    return;
+  case OPX(12):
+    r = A > 31 && A < 127 ? 3 : 0;
+    goto st;
+  default:
+    zfatal(ZM_ERR_OPCODE);
+    return;
+  }
+st:
+  store(r);
+  return;
+stbr:
+  store(r);
+  c = r != 0;
+br:
+  branch(c);
 }
 
 static void exec(uint8_t code) {
@@ -403,20 +583,10 @@ static void exec(uint8_t code) {
     obj_insert(A, B);
     return;
   case OP2(15):
-    r = A + (B << 1);
-#if ZM_PAGE_DYN
-    r = zwi(r);
-#else
-    r = r < static_base - 1 ? dyn[r] << 8 | dyn[r + 1] : zw(r);
-#endif
+    r = zwi(A + (B << 1));
     goto st;
   case OP2(16):
-    r = A + B;
-#if ZM_PAGE_DYN
-    r = zbi(r);
-#else
-    r = r < static_base ? dyn[r] : zb(r);
-#endif
+    r = zbi(A + B);
     goto st;
   case OP2(17):
     r = prop_get(A, B);
@@ -452,9 +622,8 @@ static void exec(uint8_t code) {
     goto br;
   case OP1(1):
   case OP1(2):
-    c = obj_rel(A, code == OP1(1) ? OBJ_SIBLING : OBJ_CHILD);
-    store(c);
-    goto br;
+    r = obj_rel(A, code == OP1(1) ? OBJ_SIBLING : OBJ_CHILD);
+    goto stbr;
   case OP1(3):
     r = obj_rel(A, OBJ_PARENT);
     goto st;
@@ -484,13 +653,19 @@ static void exec(uint8_t code) {
     pc_rel(A - 2);
     return;
   case OP1(13):
-    str_set(A >> 7, A << 1);
+    zunpack(A);
+    str_set(pk_page, pk_off);
     zprint_str();
     return;
   case OP1(14):
     r = ind_get(A);
     goto st;
   case OP1(15):
+    c = 0;
+    if (zver > 4)
+      goto call;
+    /* fall through */
+  case OPV(24):
     r = ~A;
     goto st;
   case OP0(0):
@@ -509,29 +684,19 @@ static void exec(uint8_t code) {
       zret(1);
     }
     return;
-  case OP0(12):
-    if (PLAT_STATUS)
-      zstatus();
-    return;
   case OP0(4):
-  case OPV(10):
-  case OPV(11):
+  case OP2(27):
   case OPV(20):
-  case OPV(21):
-    return;
-  case OP0(5):
-  case OP0(6):
-    c = zsave(code == OP0(5));
-    goto br;
-  case OP0(7):
-    if (!zreload())
-      zfatal(ZM_ERR_OPEN);
-    zstart();
+  case OPX(13):
     return;
   case OP0(8):
     zret(pop());
     return;
   case OP0(9):
+    if (zver > 4) {
+      r = csp;
+      goto st;
+    }
     pop();
     return;
   case OP0(10):
@@ -540,11 +705,18 @@ static void exec(uint8_t code) {
   case OP0(11):
     zputc(ZNL);
     return;
-  case OP0(13):
-    c = zverify();
-    goto br;
   case OPV(0):
-    zcall();
+  case OPV(12):
+  case OP2(25):
+  case OP1(8):
+    c = 1;
+    goto call;
+  case OPV(25):
+  case OPV(26):
+  case OP2(26):
+    c = 0;
+  call:
+    zcall(c);
     return;
   case OPV(1):
     zsw(A + (B << 1), opnd[2]);
@@ -556,7 +728,9 @@ static void exec(uint8_t code) {
     prop_put(A, B, opnd[2]);
     return;
   case OPV(4):
-    zsread(A, B);
+    r = zsread(A, nops > 1 ? B : 0);
+    if (zver > 4)
+      goto st;
     return;
   case OPV(5):
     zputc(A);
@@ -584,32 +758,44 @@ static void exec(uint8_t code) {
     zstream(A, B);
     return;
   default:
-    zfatal(ZM_ERR_OPCODE);
+    exec_x(code);
     return;
   }
 st:
   store(r);
   return;
+stbr:
+  store(r);
+  c = r != 0;
 br:
   branch(c);
 }
 
 /* After the PC ran past the story: an error unless it has come back. */
 static NOINLINE uint8_t zresume(void) {
-  if (zstate == ZS_PAST)
-    zstate = pc_page < story_pages ? ZS_RUN : ZM_ERR_ADDRESS;
+  if (zstate == ZS_PAST) {
+    zstate = ZS_RUN;
+    if (pc_page >= story_pages)
+      zfatal(ZM_ERR_ADDRESS);
+  }
   return zstate == ZS_RUN;
 }
 
 uint8_t zm_run(void) {
-  uint8_t op, code, t, v;
+  uint8_t op, code, t, t2, v;
   uint16_t w;
+#ifdef ZM_TRACE
+  uint16_t op_page;
+  uint8_t op_off;
+#endif
   zstate = ZS_RUN;
   rng = zseed();
   zstart();
   for (;;) {
+#ifdef ZM_TRACE
     op_page = pc_page;
     op_off = pc_off;
+#endif
     if (zstate != ZS_RUN && !zresume())
       break;
     op = pc_byte();
@@ -623,12 +809,23 @@ uint8_t zm_run(void) {
       code = OP2(op & 0x1F);
     } else if (op < 0xC0) {
       t = op >> 4 & 3;
-      nops = t != 3;
-      if (nops)
+      if (t != 3) {
         opnd[0] = operand(t);
-      code = (nops ? OP1(0) : OP0(0)) + (op & 0x0F);
+        nops = 1;
+        code = OP1(0) + (op & 0x0F);
+      } else if (op != 0xBE) {
+        nops = 0;
+        code = OP0(0) + (op & 0x0F);
+      } else {
+        t = pc_byte();
+        code = t < 0x20 ? OPX(t) : 0xFF;
+        goto var;
+      }
     } else {
+      code = (op & 0x20 ? OPV(0) : OP2(0)) + (op & 0x1F);
+    var:
       t = pc_byte();
+      t2 = op == 0xEC || op == 0xFA ? pc_byte() : 0xFF;
       nops = 0;
       if (t < 0xC0) {
         opnd[0] = operand(t >> 6);
@@ -641,12 +838,12 @@ uint8_t zm_run(void) {
             nops = 3;
             if ((t & 3) != 3) {
               opnd[3] = operand(t & 3);
-              nops = 4;
+              for (nops = 4; nops < 8 && t2 < 0xC0; t2 = t2 << 2 | 3)
+                opnd[nops++] = operand(t2 >> 6);
             }
           }
         }
       }
-      code = (op & 0x20 ? OPV(0) : OP2(0)) + (op & 0x1F);
     }
 #ifdef ZM_TRACE
     if (zm_trace) {
@@ -663,10 +860,11 @@ uint8_t zm_run(void) {
     zputs("\nError ");
     zprint_num(zstate);
     zputs(" at $");
-    zprint_hex(op_page, 3);
-    zprint_hex(op_off, 2);
+    zprint_hex(err_page, 3);
+    zprint_hex(err_off, 2);
     zputc(ZNL);
   }
   zflush();
+  zscreen_reset();
   return zstate;
 }

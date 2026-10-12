@@ -1,5 +1,5 @@
 ! kimformer demo: a five-room adventure with no standard library.
-! Build: inform6 -v3 -e -~S '$OMIT_UNUSED_ROUTINES=1' demo.inf
+! Build: inform6 -v3 (or -v5) -e -~S '$OMIT_UNUSED_ROUTINES=1' demo.inf
 
 Release 1;
 Serial "261011";
@@ -265,12 +265,12 @@ Object player "yourself" Meadow
       if (Dir(w)) return Go(Dir(w));
       "Which way?";
     'save':
-      @save ?SaveOk;
+      save SaveOk;
       "Save failed.";
       .SaveOk;
       "Ok.";
     'restore':
-      @restore ?RestOk;
+      restore RestOk;
       "Restore failed.";
       .RestOk;
       "Ok.";

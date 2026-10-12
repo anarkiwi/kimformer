@@ -22,7 +22,6 @@ uint16_t sv_xfer(uint8_t *buf, uint16_t n) { return buf[0] = n; }
 uint8_t sv_close(void) { return io; }
 uint8_t dir_open(void) { return io; }
 uint8_t dir_next(char *name) { return name[0] = io; }
-void plat_status(const char *left, const char *right) { io = *left + *right; }
 void plat_exit(void) { io = 1; }
 
 int main(void) {
