@@ -1,11 +1,13 @@
 # Unified paging of dynamic memory
 
-`make ... PAGEDYN=1` builds `ZM_PAGE_DYN`. In this build, dynamic memory shares
-the cache frame pool with static and high memory. It is the first step toward
-a v5 interpreter, where
-the v5 corpus survey found that a median turn touches 26 dynamic pages
-and writes 9. The default build is unchanged: its KIM-1 image is byte for byte
-the same.
+Dynamic memory shares the cache frame pool with static and high memory. This
+began as an experiment (`make PAGEDYN=1`, `ZM_PAGE_DYN`) next to the build
+that pinned all of dynamic memory, as the first step toward a v5
+interpreter, where the v5 corpus survey found that a median turn touches 26
+dynamic pages and writes 9. It is now the only memory layer, for every story
+version; the measurements below compare the two builds of that time. The
+current page map and costs are in [design.md](design.md#memory) and
+[usage.md](usage.md#performance).
 
 ## Design
 

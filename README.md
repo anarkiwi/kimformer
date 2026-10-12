@@ -1,11 +1,12 @@
 # kimformer
 
-A version 3 Z-machine for the KIM-1, PAL-II and replicas: plays Zork I and
-other `.z3` stories from an SD card on an sd2iec attached through the
+A Z-machine for the KIM-1, PAL-II and replicas: plays Zork I and other
+version 3, 4, 5 and 8 stories (`.z3`, `.z4`, `.z5`, `.z8`) from an SD card on
+an sd2iec attached through the
 [KIMDOS](https://github.com/anarkiwi/kimdos) adapter.
 
-Needs a VT100/ANSI terminal (80x24) for the status line; `make kim VT100=0`
-builds for a plain TTY.
+Needs a VT100/ANSI terminal (80x24) for the status line and the upper window
+of v4+ games; `make kim VT100=0` builds for a plain TTY.
 
 ## Build
 
@@ -22,7 +23,7 @@ use; the KIMDOS shell comes from the
 
 ## Use
 
-Copy the `.z3` stories to the SD card. Then load the interpreter at $2000
+Copy the stories to the SD card. Then load the interpreter at $2000
 one of two ways and pick a story from the menu.
 
 From paper tape (no SD card copy needed):
@@ -58,4 +59,4 @@ its cache, so reload the shell afterwards to use it again.
 - [docs/design.md](docs/design.md) — architecture, memory map, interfaces
 - [docs/demo.md](docs/demo.md) — demo adventure: building, map, walkthrough
 - [docs/development.md](docs/development.md) — building, testing, tracing, the simulator
-- [docs/paging.md](docs/paging.md) — unified paging of dynamic memory: the `PAGEDYN=1` experiment and its costs
+- [docs/paging.md](docs/paging.md) — unified paging of dynamic memory: the measurements behind it

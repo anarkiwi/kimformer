@@ -10,10 +10,15 @@
   on the user port and an sd2iec as device 8. Story files are read with the
   sd2iec `P` (position) command on ordinary files, which Commodore drives do
   not support.
-- An SD card with version 3 story files (`.z3`), e.g. Zork I.
-- A VT100/ANSI terminal, 80x24: line 1 is the status line (location, and
+- An SD card with story files of version 3, 4, 5 or 8 (`.z3`, `.z4`, `.z5`,
+  `.z8`), e.g. Zork I or games written with Inform 5/6 or PunyInform. Inform
+  7 and Dialog games run, but too slowly at 1 MHz to play.
+- A VT100/ANSI terminal, 80x24: in version 3, line 1 is the status line (location, and
   score and moves or the time), lines 2-24 scroll. `make kim VT100=0` builds
-  for a plain TTY instead, without a status line.
+  for a plain TTY instead, without a status line. Version 4 and later games
+  draw their own status line, menus and quote boxes in the upper window,
+  which needs the VT100; on a plain TTY that text is not shown (see
+  [Playing](#playing)).
 
 ## Building
 
@@ -56,9 +61,10 @@ The KIMDOS shell at $0400, to load `KIMFORMER.PRG` from the card, is a
 
 ## The SD card
 
-Copy the `.z3` files to the card. sd2iec shows FAT names upper case, and a
-file whose extension it does not know (`.z3`, `.sav`) as a `PRG` file under
-its full name, so `zork1.z3` lists as `"ZORK1.Z3" PRG`. Keep names to 8.3 so
+Copy the story files (`.z3`, `.z4`, `.z5`, `.z8`) to the card. sd2iec shows
+FAT names upper case, and a file whose extension it does not know (`.z5`,
+`.sav`) as a `PRG` file under its full name, so `zork1.z3` lists as
+`"ZORK1.Z3" PRG`. Keep names to 8.3 so
 they fit the 16-character CBM name. The menu lists the drive's current
 directory, so stories can live in a subdirectory selected with the KIMDOS
 shell (`@CD:GAMES`) before starting the interpreter.
@@ -131,7 +137,23 @@ last character. Output is wrapped at 80 columns.
 
 Fatal interpreter errors print `Error <code> at $<PC>` and return to the
 menu; loading errors print `Error <code>` (codes in `src/zm.h`: 1 the file
-could not be opened or read, 2 not version 3, 3 not enough memory).
+could not be opened or read, 2 not version 3, 4, 5 or 8, 3 not enough
+memory).
+
+Version 4 and later games:
+
+- On a VT100 the game owns the screen: its status line and quote boxes are
+  drawn in the upper window at the top, and the story text scrolls below it,
+  always continuing on the bottom line. Bold and reverse video work; italic
+  shows underlined; colours are ignored; a beep is BEL.
+- Cursor keys work in menus and as line terminators where the game asks for
+  them. The KIM-1 TTY echoes every key: for single-key input the interpreter
+  moves the cursor back and blanks it, but Enter still moves down a line.
+- On a plain TTY (`VT100=0`) the upper window is not shown, so the status
+  line, quote boxes and the text of menus are missing; the story text is all
+  there.
+- `undo` is not available (games say so); timed input never times out, so
+  real-time games wait for a key.
 
 ## Smoke test on a board
 
@@ -161,16 +183,21 @@ an error.
 The interpreter probes every page of $0400-$13FF and `__kim_end`-$FEFF
 (inverts a byte and reads it back, then restores it) and uses those that
 hold. A page that mirrors other memory, as on a board that does not decode
-every address line, is skipped. A story's dynamic memory (Zork I: 45 pages)
-must fit one unbroken run of RAM pages; every other page found is a cache
-frame for the rest of the story, which is paged in from the card on demand.
-At least 3 cache frames are needed.
+every address line, is skipped. The start of the story up to its global
+variables and object table (Zork I: 13 pages) must fit one unbroken run of
+RAM pages; every other page found is a cache frame for the rest of the story,
+which is paged in from the card on demand. A page the game writes stays in
+RAM, so the frames must hold the rest of dynamic memory (Zork I: 32 pages),
+one page of page map per 64K of story beyond the first, and 3 more.
 
-| Board | Pages | Zork I |
+| Board | Pages | Zork I (340 pages) |
 | --- | --- | --- |
-| PAL-II defaults | 16 at $04-$13, 136 at $77-$FE | 107 cache frames of 340 story pages |
-| RAM $0000-$03FF, $2000-$AFFF | 57 at $77-$AF | 12 cache frames: 25-49 page loads a move |
-| RAM $0000-$03FF, $2000-$A3FF | 45 at $77-$A3 | `Error 3`: too few cache frames |
+| PAL-II defaults | 16 at $04-$13, 110 at $91-$FE | 112 cache frames: 3.0 page loads a move over the whole game |
+| RAM $0000-$03FF, $2000-$C3FF | 51 at $91-$C3 | 37 cache frames: 58 page loads a move |
+| RAM $0000-$03FF, $2000-$C0FF | 48 at $91-$C0 | `Error 3`: too few cache frames |
+
+The Library Of Horror (version 5, 162 pages, 14 of them dynamic, 11 pinned)
+fits in the PAL-II's RAM whole, with 115 cache frames.
 
 With fewer frames the game runs the same but reads the card more often: a
 page miss costs a seek and a 256-byte read, about 0.10 s with JiffyDOS and
@@ -194,15 +221,15 @@ opening moves of `tests/test_host.py`. `make bench` (`python -m kimformer.prof
 interpreter's cycles without story I/O and console time, the I/O cycles and
 the seeks:
 
-Story I/O and TTY columns give JiffyDOS / the standard protocol
-(`make bench` against a drive with and without JiffyDOS: `--no-jiffy`):
+Story I/O columns give JiffyDOS / the standard protocol (`make bench`
+against a drive with and without JiffyDOS: `--no-jiffy`):
 
-| | Interpreter | With story I/O | With TTY output |
-| --- | --- | --- | --- |
-| start to the menu | 0.2 s | | 0.8 s |
-| load (154 pages) | | 13.6 s / 23.5 s | 17.9 s / 27.8 s with the opening text |
-| one move, PAL-II | 0.74-1.17 s, mean 1.00 s | 0.80-1.65 s / 0.80-2.00 s, 0-4 page loads | 2.1-6.1 s / 2.2-6.5 s |
-| one move, 12 cache frames | 0.75-1.19 s | 3.8-7.4 s / 6.1-12.0 s, 25-49 page loads | |
+| | Interpreter | With story I/O |
+| --- | --- | --- |
+| load (126 pages) | | 11.8 s / 20.3 s |
+| one move, PAL-II | 0.75-1.18 s, mean 1.01 s | 0.92-2.35 s / 0.99-3.22 s, 1-11 seeks |
+
+The TTY adds 8.3 ms per character at 1200 baud.
 
 `make bench` before and after the interpreter core was reworked for the
 6502 (fixed locals and split 8-bit evaluation stack, zero page PC pointer,
@@ -213,14 +240,28 @@ inline operand and local access, clock replacement):
 | before | 2,021,291 (1,546,987-2,324,577) | $7700 | 107 |
 | after | 997,653 (739,986-1,166,768) | $7500 | 109 |
 
+and before and after versions 4, 5 and 8 were added on unified paging (the
+earlier build with dynamic memory pinned, the `PAGEDYN=1` experiment, this
+build):
+
+| | Interpreter cycles per move | Image end | PAL-II cache frames |
+| --- | --- | --- | --- |
+| dynamic memory pinned | 996,901 | $7700 | 107 |
+| `PAGEDYN=1` | 1,004,713 | $7900 | 137 |
+| versions 3, 4, 5, 8 | 1,010,774 (752,014-1,175,926) | $9100 | 112 |
+
+The Library Of Horror (PunyInform, version 5), played to its end with
+`python -m kimformer.prof --bench --walk tests/stories/library_of_horror.walk
+STORY`: 1.36M interpreter cycles per turn on average (median 1.39M, at most
+3.2M), 48 seeks in 45 inputs.
+
 For reference, Infocom's own C64 interpreter (Version H, hand-written 6502)
 takes about 1.0M cycles of interpreter time per Zork I move (release 88,
 nine opening moves in VICE, page loads excluded; about 0.9M without the C64's
 interrupt and video overhead).
 
-Paging dynamic memory with static memory (`PAGEDYN=1`, an experiment toward
-v5) costs under 1% of interpreter time per move and 2 pages of image on Zork I;
-see [paging.md](paging.md) for the measurements and the recommendation.
+Dynamic memory is paged with static memory; [paging.md](paging.md) has the
+measurements that chose this design.
 
-The status line is about 85 characters a move, 0.7 s at 1200 baud; a faster
+The version 3 status line is about 85 characters a move, 0.7 s at 1200 baud; a faster
 terminal line or `VT100=0` saves most of that.

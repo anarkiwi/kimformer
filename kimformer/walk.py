@@ -5,8 +5,8 @@ seeds for which the walk ends on the story's maximum score.
 
 ``python -m kimformer.walk tests/stories/zork1.walk --stats SEED [--args ARGS]``
 plays it once with that seed and prints the paging counters per move
-(``zm -S``): page loads, story seeks, dirty pages and, for a ``PAGEDYN=1``
-build, the loads and write-backs of a pool that evicts dirty pages.
+(``zm -S``): page loads, story seeks, dirty pages and the loads and
+write-backs of a pool that would evict dirty pages.
 """
 
 import argparse
