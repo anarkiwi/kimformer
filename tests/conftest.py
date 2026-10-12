@@ -84,9 +84,35 @@ def fixture_clock(tmp_path_factory):
     return fixtures.compile_story(REPO / "tests" / "stories" / "clock.inf", out)
 
 
+def demo_story(tmp_path_factory, version):
+    """The demo adventure compiled for version, as games/games.mk does."""
+    out = tmp_path_factory.mktemp("demo") / f"demo.z{version}"
+    flags = ("-e", "-~S", "$OMIT_UNUSED_ROUTINES=1")
+    return fixtures.compile_story(
+        REPO / "games" / "demo.inf", out, version, flags=flags
+    )
+
+
 @pytest.fixture(name="demo", scope="session")
 def fixture_demo(tmp_path_factory):
-    """The demo adventure, compiled as games/games.mk does."""
-    out = tmp_path_factory.mktemp("demo") / "demo.z3"
-    flags = ("-e", "-~S", "$OMIT_UNUSED_ROUTINES=1")
-    return fixtures.compile_story(REPO / "games" / "demo.inf", out, flags=flags)
+    """The demo adventure for version 3."""
+    return demo_story(tmp_path_factory, 3)
+
+
+@pytest.fixture(name="demo5", scope="session")
+def fixture_demo5(tmp_path_factory):
+    """The demo adventure for version 5."""
+    return demo_story(tmp_path_factory, 5)
+
+
+@pytest.fixture(name="probe5", scope="session")
+def fixture_probe5(tmp_path_factory):
+    """The version 5 probe story."""
+    out = tmp_path_factory.mktemp("probe5") / "probe5.z5"
+    return fixtures.compile_story(REPO / "tests" / "stories" / "probe5.inf", out, 5)
+
+
+@pytest.fixture(name="loh", scope="session")
+def fixture_loh():
+    """The Library Of Horror, PunyInform's demo game, for version 5."""
+    return fixtures.library_of_horror()

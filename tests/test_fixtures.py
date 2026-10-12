@@ -14,12 +14,12 @@ FAKE_INFORM = r"""
 #include <string.h>
 int main(int argc, char **argv) {
   FILE *f;
-  if (argc != 4 || strstr(argv[2], "bad")) {
+  if (argc < 4 || strstr(argv[argc - 2], "bad")) {
     puts("bad source");
     return 1;
   }
-  f = fopen(argv[3], "w");
-  fprintf(f, "%s %s", argv[1], argv[2]);
+  f = fopen(argv[argc - 1], "w");
+  fprintf(f, "%s %s", argv[1], argv[argc - 2]);
   return fclose(f);
 }
 """
@@ -85,7 +85,9 @@ def test_compile_story(tmp_path, fake_inform):
 def test_czech(tmp_path, fake_inform, monkeypatch):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        for name in ("czech.inf", "czech.z5", "czech.out3", "README.txt"):
+        for name in ("czech.inf", "czech.z5", "README.txt") + tuple(
+            f"czech.out{v}" for v in (3, 4, 5, 8)
+        ):
             zf.writestr(name, name)
     monkeypatch.setitem(
         fixtures.SOURCES,
@@ -96,12 +98,61 @@ def test_czech(tmp_path, fake_inform, monkeypatch):
     assert paths["out3"].read_text(encoding="ascii") == "czech.out3"
     assert paths["z5"].read_text(encoding="ascii") == "czech.z5"
     assert paths["z3"].read_text(encoding="ascii") == "-v3 " + str(paths["inf"])
+    assert paths["z8"].read_text(encoding="ascii") == "-v8 " + str(paths["inf"])
     assert fixtures.czech(fake_inform) == paths
+
+
+def archive(entries, mode):
+    """A tar archive (mode "w:gz" etc.) of {name: bytes}."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode=mode) as tar:
+        for name, data in entries.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def test_suites(tmp_path, monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("praxix.z5", b"praxix")
+    sources = source(tmp_path, "praxix.zip", buf.getvalue())
+    sources |= source(
+        tmp_path, "etude.tar.Z", archive({"etude/etude.z5": b"etude"}, "w:gz")
+    )
+    for name, src in sources.items():
+        monkeypatch.setitem(fixtures.SOURCES, name, src)
+    cache = tmp_path / "cache"
+    assert fixtures.praxix(cache).read_bytes() == b"praxix"
+    assert fixtures.etude(cache).read_bytes() == b"etude"
+    assert fixtures.etude(cache) == cache / "etude" / "etude.z5"
+
+
+def test_library_of_horror(tmp_path, fake_inform, monkeypatch):
+    root = f"PunyInform-{fixtures.PUNY_VERSION}"
+    name = root + ".tar.gz"
+    data = archive(
+        {f"{root}/library_of_horror.inf": b"!", f"{root}/lib/x.h": b""}, "w:gz"
+    )
+    monkeypatch.setitem(fixtures.SOURCES, name, source(tmp_path, name, data)[name])
+    out = fixtures.library_of_horror(fake_inform)
+    assert out.read_text(encoding="ascii") == "-v5 " + str(
+        fake_inform / root / "library_of_horror.inf"
+    )
+    assert fixtures.library_of_horror(fake_inform) == out
 
 
 def test_main(monkeypatch):
     fetched = []
     monkeypatch.setattr(fixtures, "fetch", fetched.append)
-    monkeypatch.setattr(fixtures, "czech", lambda: fetched.append("czech"))
+    for name in ("czech", "praxix", "etude", "library_of_horror"):
+        monkeypatch.setattr(fixtures, name, lambda n=name: fetched.append(n))
     fixtures.main()
-    assert fetched == [*fixtures.SOURCES, "czech"]
+    assert fetched == [
+        *fixtures.SOURCES,
+        "czech",
+        "praxix",
+        "etude",
+        "library_of_horror",
+    ]

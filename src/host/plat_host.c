@@ -15,7 +15,7 @@ uint8_t plat_arena[0x10000];
 uint8_t host_ram[256];
 int host_frames = -1;
 uint8_t plat_status_on;
-int host_seeded;
+int host_seeded, host_noecho;
 uint16_t host_seed;
 FILE *host_stats;
 static uint32_t seeks;
@@ -32,15 +32,20 @@ uint8_t plat_getc(void) {
   int c = getchar();
   if (c == EOF)
     exit(0);
-  putchar(c);
+  if (!host_noecho)
+    putchar(c);
   return c & 0x7F;
 }
 
 uint8_t plat_pages(uint8_t *hi, uint8_t max) {
-  unsigned h, n = 0, cap = 256;
-  uint8_t sb[2];
-  if (host_frames >= 0 && story && pread(fileno(story), sb, 2, 14) == 2)
-    cap = sb[0] + !!sb[1] + host_frames;
+  unsigned h, n = 0, cap = 256, s, len;
+  uint8_t hd[0x1C];
+  if (host_frames >= 0 && story && pread(fileno(story), hd, sizeof hd, 0) > 0) {
+    s = 8 - ((hd[0] >> 2) + 1);
+    len = hd[0x1A] << 8 | hd[0x1B];
+    len = len ? (len + (1u << s) - 1) >> s : 256u << (8 - s);
+    cap = hd[14] + !!hd[15] + host_frames + (len - 1) / 256;
+  }
   for (h = 0; h < 256 && n < max && n < cap; h++)
     if (host_ram[h])
       hi[n++] = h;

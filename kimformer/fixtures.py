@@ -6,6 +6,7 @@ and written atomically so concurrent test workers can share the cache.
 """
 
 import hashlib
+import io
 import os
 import subprocess
 import tarfile
@@ -20,6 +21,8 @@ REPO = Path(__file__).resolve().parent.parent
 CACHE = Path(os.environ.get("KIMFORMER_CACHE", REPO / "tests" / "fixtures" / "cache"))
 
 INFORM_VERSION = "6.43"
+PUNY_VERSION = "5_14_1"
+IFARCHIVE_TOOLS = "https://ifarchive.org/if-archive/infocom/interpreters/tools/"
 
 SOURCES = {
     "zork1.z3": (
@@ -28,8 +31,21 @@ SOURCES = {
         "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79",
     ),
     "czech_0_8.zip": (
-        "https://ifarchive.org/if-archive/infocom/interpreters/tools/czech_0_8.zip",
+        IFARCHIVE_TOOLS + "czech_0_8.zip",
         "d0795723e98563050575c4d3c08fdd29ade2543e132d8190255763e3bf6fef6a",
+    ),
+    "praxix.zip": (
+        IFARCHIVE_TOOLS + "praxix.zip",
+        "c654d656fb426ae1b386e5ab9c44cc5062eade4a8c3bce69c9e61191221501ad",
+    ),
+    "etude.tar.Z": (
+        IFARCHIVE_TOOLS + "etude.tar.Z",
+        "f49f31a345db477240c9be29d6015afc45a0b057bafcad09666ba6b068a0d56a",
+    ),
+    f"PunyInform-{PUNY_VERSION}.tar.gz": (
+        "https://github.com/johanberntsson/PunyInform/archive/refs/tags/"
+        f"v{PUNY_VERSION}.tar.gz",
+        "03f935a265a11ebe9e74b20812ac71b5e95e1bec93af4dd4fb892c0df73c3b1d",
     ),
     f"inform6-{INFORM_VERSION}.tar.gz": (
         "https://github.com/DavidKinder/Inform6/archive/refs/tags/"
@@ -123,29 +139,84 @@ def compile_story(source, out, version=3, cache=CACHE, flags=()):
     return out
 
 
+def _member(path, data):
+    """Writes data to path atomically; returns path."""
+    tmp = _atomic(path)
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+    return path
+
+
 def czech(cache=CACHE):
-    """CZECH paths: ``z3`` (compiled here), ``z5`` (as shipped), ``out3``."""
+    """CZECH paths: ``z3``, ``z4`` and ``z8`` (compiled here), ``z5`` (as
+    shipped), ``inf`` and the reference transcripts ``out3`` to ``out8``."""
     cache = Path(cache)
     root = cache / "czech"
-    paths = {"inf": root / "czech.inf", "z5": root / "czech.z5"}
-    paths["out3"] = root / "czech.out3"
-    paths["z3"] = root / "czech.z3"
-    if not all(paths[k].exists() for k in ("inf", "z5", "out3")):
+    shipped = ("inf", "z5", "out3", "out4", "out5", "out8")
+    paths = {k: root / f"czech.{k}" for k in shipped + ("z3", "z4", "z8")}
+    if not all(paths[k].exists() for k in shipped):
         with zipfile.ZipFile(fetch("czech_0_8.zip", cache)) as zf:
-            for key in ("inf", "z5", "out3"):
-                tmp = _atomic(paths[key])
-                tmp.write_bytes(zf.read(paths[key].name))
-                os.replace(tmp, paths[key])
-    if not paths["z3"].exists():
-        compile_story(paths["inf"], paths["z3"], 3, cache)
+            for key in shipped:
+                _member(paths[key], zf.read(paths[key].name))
+    for version in (3, 4, 8):
+        if not paths[f"z{version}"].exists():
+            compile_story(paths["inf"], paths[f"z{version}"], version, cache)
     return paths
+
+
+def praxix(cache=CACHE):
+    """Path to praxix.z5, Andrew Plotkin's Z-machine test suite."""
+    path = Path(cache) / "praxix" / "praxix.z5"
+    if not path.exists():
+        with zipfile.ZipFile(fetch("praxix.zip", cache)) as zf:
+            _member(path, zf.read("praxix.z5"))
+    return path
+
+
+def etude(cache=CACHE):
+    """Path to etude.z5 (TerpEtude) from its compress(1) archive."""
+    path = Path(cache) / "etude" / "etude.z5"
+    if not path.exists():
+        raw = subprocess.run(
+            ["gzip", "-dc", str(fetch("etude.tar.Z", cache))],
+            capture_output=True,
+            check=True,
+        ).stdout
+        with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+            _member(path, tar.extractfile("etude/etude.z5").read())
+    return path
+
+
+def library_of_horror(cache=CACHE):
+    """Path to The Library Of Horror, the PunyInform demo game, compiled for
+    version 5 from the pinned PunyInform release."""
+    cache = Path(cache)
+    out = cache / "loh" / "loh.z5"
+    if out.exists():
+        return out
+    root = cache / f"PunyInform-{PUNY_VERSION}"
+    if not root.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=cache) as tmp:
+            with tarfile.open(fetch(f"PunyInform-{PUNY_VERSION}.tar.gz", cache)) as tar:
+                tar.extractall(tmp, filter="data")
+            os.replace(Path(tmp) / root.name, root)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return compile_story(
+        root / "library_of_horror.inf",
+        out,
+        5,
+        cache,
+        flags=(f"+include_path={root / 'lib'}",),
+    )
 
 
 def main():
     """Fetch and build every fixture."""
     for name in tqdm(SOURCES, desc="fixtures"):
         fetch(name)
-    czech()
+    for build in tqdm((czech, praxix, etude, library_of_horror), desc="builds"):
+        build()
 
 
 if __name__ == "__main__":

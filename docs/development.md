@@ -25,16 +25,13 @@ pip install -e ".[dev]"
 | `make bench` | interpreter cycles per Zork I move on the simulated KIM-1 (after `make kim`) |
 | `make format` | clang-format (LLVM style) over `src/` |
 
-`PAGEDYN=1` on any target builds the unified paging experiment
-(`ZM_PAGE_DYN`, [paging.md](paging.md)); use a separate `BUILD` directory to
-keep both, e.g. `make host cov kim BUILD=build/pd PAGEDYN=1` and
-`make test BUILD=build/pd PAGEDYN=1` (which runs the tests against
-`build/pd/cov/zm`). `make mos-check` checks the default build only.
+`make fixtures` also fetches praxix, TerpEtude and PunyInform and builds
+CZECH for versions 3, 4 and 8 and The Library Of Horror for version 5.
 
 ## Host interpreter
 
 ```
-build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [-S file] [-P pages] [story]
+build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [-S file] [-P pages] [-n] [story]
 ```
 
 | Option | |
@@ -47,10 +44,11 @@ build/zm [-w width] [-p pages] [-r lo-hi]... [-s seed] [-d dir] [-t] [-v] [-S fi
 | `-v` | VT100 status line, as on the KIM-1 |
 | `-t` | trace: one stderr line per instruction, `PPPPP OP operands...` (PC, opcode byte, operand values, hex) |
 | `-S` | paging counters: before every read a line of cumulative frames, pinned pages, page loads, dirty pages, most dirty pages, shadow loads, shadow write-backs, story seeks |
-| `-P` | `PAGEDYN=1` only: pin this many dynamic pages beyond the header, globals and object entries |
+| `-P` | pin this many dynamic pages beyond the header, globals and object entries |
+| `-n` | do not echo input (as dfrotz), for comparing transcripts |
 
 With a story it loads and runs it; without one it runs the launcher over the
-`.z3` files in the directory. Input characters are echoed. The exit status is
+`.z3`, `.z4`, `.z5` and `.z8` files in the directory. Input characters are echoed. The exit status is
 0 after `@quit` or end of input, otherwise the `zm.h` error code (64 for usage,
 66 for a bad directory).
 
@@ -60,6 +58,19 @@ With a story it loads and runs it; without one it runs the launcher over the
 exercises one area (parsing, streams, properties, save/restore, every fatal
 error). Run a single test first, e.g.
 `python -m pytest -n0 tests/test_host.py::test_czech`, then the full suite.
+
+A walk file has one command per line; blank lines and `#` comments are
+skipped, and a line `\k` presses the key k for `read_char` (sent without
+Enter; `kimformer.walk.stdin` builds the input).
+
+`tests/test_v5.py::test_loh_full` plays `tests/stories/library_of_horror.walk`,
+all 100 points of The Library Of Horror, a deterministic game.
+`walk.differences(ours, dfrotz)` checks a plain-TTY transcript (`zm -n`)
+against dfrotz's: whitespace is ignored and dfrotz may show more (its upper
+window), but nothing else may differ. `test_against_dfrotz` runs it for that
+walk and the v5 demo when `DFROTZ` holds a dfrotz command, e.g.
+`DFROTZ="docker run --rm -i -v /tmp:/tmp -v $PWD:$PWD kimformer-tools dfrotz"`
+(`make tools-image` builds the image; the Demo workflow runs it).
 
 `tests/test_zork_full.py` plays `tests/stories/zork1.walk`, a command list for
 all 350 points of Zork I, with a fixed `-s` seed: every treasure must reach the
@@ -79,7 +90,9 @@ image on the simulated KIM-1; the Zork I tests are marked `zork`
 `tests/test_board.py` runs `kimformer.board` against `tests/fake_kim.py`, a
 KIM-1 on a pty: the monitor commands kimtape uses, and `G` running the
 simulated PAL-II on what was loaded. The plain TTY case needs
-`make kim VT100=0 BUILD=build/plain`.
+`make kim VT100=0 BUILD=build/plain`. `make kim` sets the zero page split:
+the interpreter's own ZP variables, then `MOS_LTO_ZP` bytes for the LTO
+allocator.
 
 ## KIM-1 simulator
 

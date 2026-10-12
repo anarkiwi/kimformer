@@ -118,7 +118,7 @@ Object Ball "red ball" Box with weight 7 8, label 'ball' 'red', has shiny;
       'local': OneLocal();
       'deep': Deep(0);
       'nest': Nest(17);
-      'illegal': @"1OP:8S" x -> x;
+      'illegal': @"2OP:0" x x;
       'ret': @rtrue;
       default: print "?^";
     }

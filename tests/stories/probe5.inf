@@ -1,0 +1,220 @@
+! Version 5 probe: each command exercises one area of the v4+ Z-machine.
+! Build: inform6 -v5 probe5.inf
+Release 5;
+Serial "261012";
+
+Zcharacter terminating 129 130;
+
+Array text_buf -> 66;
+Array tok_buf -> 20;
+Array parse_buf -> 26;
+Array cur --> 2;
+Array table --> 10 20 30 40 50;
+Array grid -> "abcdefghij";
+Array enc -> 6;
+Array src -> "xlookx";
+! A user dictionary: no separators, 7-byte entries, -2 entries (unsorted):
+! "zebra" then "apple", encoded by Tok.
+Array udict -> 0 7 $ff $fe 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+Array w_zebra -> "zebra";
+Array w_apple -> "apple";
+Array tok_src -> "zebra look apple";
+Array name_buf -> 4 'a' 'u' 'x' '.';
+
+Attribute shiny;
+Property weight;
+Property big;
+
+Object Box "box" with weight 3, big 1 2 3 4 5 6 7 8 9 10, has shiny;
+
+[ ShowParse b i n w;
+  n = b->1;
+  print n;
+  for (i = 0 : i < n : i++) {
+    w = b-->(i * 2 + 1);
+    print " ";
+    if (w == 0) print "?";
+    else if (w == 1) print "-";
+    else if (w >= udict && w < udict + 30) print "u", (w - udict - 4) / 7;
+    else print (address) w;
+    print "/", b->(i * 4 + 4), "/", b->(i * 4 + 5);
+  }
+  new_line;
+];
+
+! Fills parse entries with 1 so that the flagged tokenise shows which it set.
+[ Mark i; for (i = 1 : i <= 12 : i++) parse_buf-->i = 1; ];
+
+[ Tok x;
+  x = udict + 4;
+  @encode_text w_zebra 5 0 x;
+  x = udict + 11;
+  @encode_text w_apple 5 0 x;
+  tok_buf->0 = 18;
+  tok_buf->1 = 16;
+  for (x = 0 : x < 16 : x++) tok_buf->(x + 2) = tok_src->x;
+  parse_buf->0 = 6;
+  @tokenise tok_buf parse_buf;
+  ShowParse(parse_buf);
+  @tokenise tok_buf parse_buf udict;
+  ShowParse(parse_buf);
+  Mark();
+  @tokenise tok_buf parse_buf udict 1;
+  ShowParse(parse_buf);
+];
+
+[ Keys x;
+  for (::) {
+    @read_char 1 -> x;
+    print x, " ";
+    if (x == '.') break;
+  }
+  new_line;
+];
+
+[ Pre x;
+  text_buf->0 = 10;
+  text_buf->1 = 3;
+  text_buf->2 = 'a';
+  text_buf->3 = 'b';
+  text_buf->4 = 'c';
+  print "abc";
+  @aread text_buf 0 -> x;
+  print "[", x, " ", text_buf->1, " ";
+  for (x = 0 : x < text_buf->1 : x++) print (char) text_buf->(x + 2);
+  print "]^";
+];
+
+[ Win;
+  @split_window 3;
+  @set_window 1;
+  @set_cursor 2 5;
+  print "UP";
+  @get_cursor cur;
+  @erase_line 1;
+  @set_text_style 1;
+  print "R";
+  @set_text_style 2;
+  print "B";
+  @set_text_style 0;
+  print_ret_table();
+  @set_window 0;
+  print "row ", cur-->0, " col ", cur-->1, "^";
+  @get_cursor cur;
+  print "lower ", cur-->0, "^";
+  @buffer_mode 0;
+  print "unbuffered ";
+  @buffer_mode 1;
+  print "text^";
+  @erase_window 1;
+  @erase_window 0;
+  @erase_window -2;
+  @split_window 0;
+  @erase_window -1;
+  print "erased^";
+];
+
+[ print_ret_table;
+  @set_cursor 1 1;
+  @print_table grid 3 2 2;
+];
+
+[ Uni x;
+  @check_unicode 65 -> x;
+  print x, " ";
+  @check_unicode 233 -> x;
+  print x, " ";
+  @print_unicode 65;
+  @print_unicode 233;
+  @set_font 1 -> x;
+  print " ", x;
+  @set_font 4 -> x;
+  print " ", x;
+  @set_font 0 -> x;
+  print " ", x, "^";
+];
+
+[ Undo x;
+  @save_undo -> x;
+  print x, " ";
+  @restore_undo -> x;
+  print x, "^";
+];
+
+[ Thrower f; @throw 7 f; print "not reached"; ];
+
+[ Middle f; Thrower(f); print "not reached"; ];
+
+[ Catcher x;
+  @catch -> x;
+  return Middle(x) + 100;
+];
+
+[ Tables x y;
+  @scan_table 30 table 5 -> x ?found;
+  print "no ";
+  .found;
+  print (x - table) / 2, " ";
+  @scan_table 'j' grid 10 $01 -> x ?~missing;
+  print x - grid, " ";
+  .missing;
+  @scan_table 99 table 5 -> x ?found2;
+  print "none ";
+  .found2;
+  x = grid + 1;
+  @copy_table grid x 4;
+  for (y = 0 : y < 6 : y++) print (char) grid->y;
+  @copy_table x grid 0-4;
+  print " ";
+  for (y = 0 : y < 6 : y++) print (char) grid->y;
+  @copy_table grid 0 2;
+  print " ", grid->0, grid->1, " ";
+  @encode_text src 4 1 enc;
+  for (y = 0 : y < 6 : y++) print enc->y, " ";
+  x = $8000;
+  @log_shift x 0-15 -> y;
+  print y, " ";
+  @art_shift x 0-15 -> y;
+  print y, " ";
+  @log_shift 1 3 -> y;
+  print y, "^";
+];
+
+[ Props x;
+  print Box.#big, " ";
+  @get_next_prop Box 0 -> x;
+  print x, " ", Box has shiny, "^";
+];
+
+[ Main w x;
+  print "PROBE5^";
+  for (::) {
+    print ">";
+    text_buf->0 = 64;
+    text_buf->1 = 0;
+    parse_buf->0 = 6;
+    @aread text_buf parse_buf -> x;
+    if (x ~= 13) { print "term ", x, "^"; continue; }
+    w = parse_buf-->1;
+    switch (w) {
+      'parse': ShowParse(parse_buf);
+      'tok': Tok();
+      'keys': Keys();
+      'pre': Pre();
+      'win': Win();
+      'uni': Uni();
+      'undo': Undo();
+      'throw': print Catcher(), "^";
+      'tables': Tables();
+      'props': Props();
+      'beep': @sound_effect 2; print "ok^";
+      'save': @save -> x; print "save ", x, "^";
+      'restore': @restore -> x; print "restore ", x, "^";
+      'aux': @save text_buf 4 name_buf -> x; print "aux ", x, "^";
+      'piracy': @piracy ?pok; print "pirate^"; jump done; .pok; print "genuine^";
+      'quit': @quit;
+      default: print "?^";
+    }
+    .done;
+  }
+];

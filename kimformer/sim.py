@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from kimdos.iec import Drive
 from kimdos.sim import CHAR_CYCLES, CYCLES, INPUT, Kim
+from kimformer import walk
 
 REPO = Path(__file__).resolve().parent.parent
 IMAGE = REPO / "build" / "kimformer.bin"
@@ -22,7 +23,7 @@ MONITOR_ZP = range(0xEF, 0x100)
 RIOT_TIMER = 0x1706
 CHUNK = 1_000_000
 VT_STATUS = re.compile("\x1b7\x1b\\[1;1H\x1b\\[7m(.*?)\x1b\\[0m\x1b8", re.S)
-VT_REGION = re.compile("\x1b\\[[0-9;]*[rH]")
+VT_CSI = re.compile("\x1b\\[[0-9;]*[A-Za-z]")
 
 
 def strip_vt100(text, status=None):
@@ -30,7 +31,7 @@ def strip_vt100(text, status=None):
     draws are appended to status if given."""
     if status is not None:
         status += VT_STATUS.findall(text)
-    return VT_REGION.sub("", VT_STATUS.sub("", text))
+    return VT_CSI.sub("", VT_STATUS.sub("", text))
 
 
 def drive_name(path):
@@ -127,8 +128,10 @@ class Machine:
         return out.decode("latin-1").replace("\r\n", "\n")
 
     def send(self, line, **kw):
-        """Type a line and Enter, then run until input is awaited again."""
-        self.kim.type(line + "\r")
+        """Type a line and Enter (or the keys of a walk file's read_char
+        command, alone), then run until input is awaited again."""
+        keys = walk.keys(line)
+        self.kim.type(line + "\r" if keys is None else keys)
         return self.run(**kw)
 
 

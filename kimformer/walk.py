@@ -5,11 +5,12 @@ seeds for which the walk ends on the story's maximum score.
 
 ``python -m kimformer.walk tests/stories/zork1.walk --stats SEED [--args ARGS]``
 plays it once with that seed and prints the paging counters per move
-(``zm -S``): page loads, story seeks, dirty pages and, for a ``PAGEDYN=1``
-build, the loads and write-backs of a pool that evicts dirty pages.
+(``zm -S``): page loads, story seeks, dirty pages and the loads and
+write-backs of a pool that would evict dirty pages.
 """
 
 import argparse
+import difflib
 import re
 import shlex
 import subprocess
@@ -24,9 +25,39 @@ SCORE = re.compile(r"Your score is (-?\d+) \(total of (\d+) points\)")
 
 
 def commands(path):
-    """Commands of a walk file: one per line, blank lines and '#' comments skipped."""
+    """Commands of a walk file: one per line, blank lines and '#' comments
+    skipped. A line starting with a backslash holds keys for read_char."""
     lines = (line.strip() for line in Path(path).read_text("ascii").splitlines())
     return [line for line in lines if line and not line.startswith("#")]
+
+
+def keys(command):
+    """The keys of a read_char command (\\keys), else None."""
+    return command[1:] if command.startswith("\\") else None
+
+
+def stdin(cmds):
+    """Terminal input for cmds: each line command followed by Enter, the keys
+    of a read_char command alone."""
+    return "".join(c if (c := keys(cmd)) is not None else cmd + "\n" for cmd in cmds)
+
+
+def squash(text):
+    """text without whitespace."""
+    return re.sub(r"\s+", "", text)
+
+
+def differences(out, ref):
+    """Where out is not ref with text left out: (out, ref) snippets of every
+    change other than an insertion into out, whitespace ignored. Checks a
+    plain TTY transcript against one that also shows the upper window."""
+    out, ref = squash(out), squash(ref)
+    ops = difflib.SequenceMatcher(None, out, ref, autojunk=False).get_opcodes()
+    return [
+        (out[max(i1 - 20, 0) : i2 + 20], ref[max(j1 - 20, 0) : j2 + 20])
+        for op, i1, i2, j1, j2 in ops
+        if op in ("replace", "delete")
+    ]
 
 
 def unmatched(expect, lines):
@@ -45,7 +76,7 @@ def play(zm, story, cmds, seed, *args):
     result = subprocess.run(
         [str(zm), "-d", str(story.parent), "-s", str(seed), *map(str, args)]
         + [story.name],
-        input="".join(c + "\n" for c in cmds).encode("latin-1"),
+        input=stdin(cmds).encode("latin-1"),
         capture_output=True,
         check=False,
     )

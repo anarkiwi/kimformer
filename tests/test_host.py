@@ -32,8 +32,10 @@ OPENING = [
 def czech_body(lines):
     """CZECH output without the interpreter-specific header report."""
     lines = [line.rstrip() for line in lines]
-    start = lines.index("Header (No tests)")
-    return lines[:start] + lines[start + 5 :]
+    start = end = lines.index("Header (No tests)") + 1
+    while lines[end].startswith("    "):
+        end += 1
+    return lines[:start] + lines[end:]
 
 
 def test_czech(runner, czech):
@@ -127,20 +129,15 @@ def test_paging_stats(runner, zork):
     last = rows[-1]
     assert len(rows) == len(OPENING) + 5
     assert all(len(row) == len(walk.COUNTERS) for row in rows)
-    assert last["frames"] + last["pinned"] == 0xFF - 0x20
-    paged = last["pinned"] < 45
-    if paged:
-        assert last["pinned"] == 13
-        assert 0 < rows[-2]["dirty"] <= last["max_dirty"] <= 45 - 13
-        assert last["dirty"] < last["max_dirty"]
-        assert last["sloads"] > 0
-    else:
-        assert last["pinned"] == 45
-        assert last["max_dirty"] == last["sloads"] == last["swb"] == 0
+    assert last["frames"] + last["pinned"] + 1 == 0xFF - 0x20
+    assert last["pinned"] == 13
+    assert 0 < rows[-2]["dirty"] <= last["max_dirty"] <= 45 - 13
+    assert last["dirty"] < last["max_dirty"]
+    assert last["sloads"] > 0
     small, rows = paging(runner, story, "-p", 3)
     assert small == full
     assert rows[-1]["loads"] > last["loads"]
-    assert (rows[-1]["swb"] > 0) == paged
+    assert rows[-1]["swb"] > 0
     pinned, rows = paging(runner, story, "-P", 64)
     assert pinned == full
     assert rows[-1]["pinned"] == 45 and rows[-1]["max_dirty"] == 0
@@ -224,7 +221,7 @@ def test_probe_props(runner, probe):
 
 def test_probe_text(runner, probe):
     out = text(play(runner, probe, "esc", "noops", "verify", "call0", "what"))
-    assert "<{|}>?\n>noops\nok\n>verify\ngood\n>call0\n0\n>what\n?\n" in out
+    assert "<{|}>?\n>noops\n\x07ok\n>verify\ngood\n>call0\n0\n>what\n?\n" in out
 
 
 def test_probe_random(runner, probe):
@@ -303,12 +300,12 @@ def test_probe_errors(runner, probe, command, code):
 
 def test_load_errors(runner, czech, zork):
     (runner.dir / "empty.z3").write_bytes(b"")
-    z5 = runner.add(czech["z5"])
+    (runner.dir / "v6.z5").write_bytes(b"\x06" + czech["z5"].read_bytes()[1:])
     story = runner.add(zork)
     cases = [
         (("missing.z3",), ZM_ERR_OPEN),
         (("empty.z3",), ZM_ERR_OPEN),
-        ((z5,), ZM_ERR_VERSION),
+        (("v6.z5",), ZM_ERR_VERSION),
         (("-p", 2, story), ZM_ERR_MEMORY),
         (("-r", "20-40", story), ZM_ERR_MEMORY),
     ]
@@ -336,7 +333,7 @@ def test_usage(runner, args, code):
 def test_launcher(runner, probe, zork, czech):
     runner.add(probe, "probe.z3")
     runner.add(zork, "ZORK1.Z3")
-    runner.add(czech["z5"], "bad.z3")
+    (runner.dir / "bad.z3").write_bytes(b"\x07" + czech["z5"].read_bytes()[1:])
     (runner.dir / "notes.txt").write_text("x")
     (runner.dir / "toolongname_story.z3").write_text("x")
     stdin = "".join(
