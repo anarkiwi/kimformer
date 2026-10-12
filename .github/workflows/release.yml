@@ -38,6 +38,10 @@ jobs:
       - run: make kim
       - run: make kim VT100=0 BUILD=build/plain
       - run: make demo
+      - name: library of horror
+        run: |
+          mkdir -p release
+          python -c "import shutil; from kimformer.fixtures import CACHE, PUNY_VERSION, library_of_horror as l; shutil.copy(l(), 'release/loh.z5'); shutil.copy(CACHE / f'PunyInform-{PUNY_VERSION}' / 'LICENSE', 'release/loh-LICENSE.txt')"
       - name: attach
         run: |
           mkdir -p release
