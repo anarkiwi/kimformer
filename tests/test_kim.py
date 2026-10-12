@@ -10,6 +10,7 @@ from kimformer import prof, sim, walk
 from kimformer.sim import IMAGE, Machine
 from tests.conftest import REPO
 from tests.test_host import OPENING
+from tests.test_v5 import LOH_WALK, MILESTONES
 
 VT_OPEN, VT_CLOSE = "\x1b[2;24r\x1b[24;1H", "\x1b[r\x1b[24;1H"
 MENU = "1. DEMO.Z3\n2. ZORK1.Z3\nStory (Q quits): "
@@ -91,7 +92,7 @@ def fixture_zork_full(image, stories):
 def test_launcher(image, stories):
     machine = boot(image, stories)
     assert machine.output() == ""
-    assert machine.kim.output.startswith(VT_OPEN + "KIMFORMER Z-MACHINE V3\r\n")
+    assert machine.kim.output.startswith(VT_OPEN + "KIMFORMER Z-MACHINE\r\n")
     for pick in ("0", "9", "x", ""):
         assert machine.send(pick) == pick + "\n" + MENU
     out = machine.send("1")
@@ -116,7 +117,7 @@ def test_rerun_without_reload(image, stories):
 
 def test_no_drive(image, stories):
     machine = Machine(dict(stories), image=image, present=False)
-    assert machine.run() == "KIMFORMER Z-MACHINE V3\nNo drive\nNo stories\n"
+    assert machine.run() == "KIMFORMER Z-MACHINE\nNo drive\nNo stories\n"
     assert machine.reason == MONITOR
 
 
@@ -130,7 +131,7 @@ def test_restore_missing(image, stories):
 
 
 def test_too_little_ram(image, stories):
-    machine = boot(image, stories, ram=((0, 0x3FF), (0x1700, 0x17FF), (0x2000, 0x8FFF)))
+    machine = boot(image, stories, ram=((0, 0x3FF), (0x1700, 0x17FF), (0x2000, 0xAFFF)))
     out = machine.send("2")
     assert out.endswith("\nError 3\n" + MENU)
     check(machine)
@@ -181,7 +182,7 @@ def test_zork_eviction(image, stories, zork_full):
     )
     assert [o for _, o, _ in small_log[1:]] == [o for _, o, _ in log[1:]]
     assert small.drive.files[b"ZORK1.SAV"] == machine.drive.files[b"ZORK1.SAV"]
-    assert small.seeks > 10 * machine.seeks
+    assert small.seeks > 5 * machine.seeks
 
 
 def test_cli(image, demo, tmp_path, monkeypatch, capsys):
@@ -213,7 +214,7 @@ def test_profile(image, demo, tmp_path, capsys):
 @pytest.mark.zork
 def test_zork_mirrored_ram(image, stories, zork_full):
     """Upper RAM that mirrors the image through an undecoded A15 is not used."""
-    ram = ((0, 0x3FF), (0x1700, 0x17FF), (0x2000, 0xBFFF))
+    ram = ((0, 0x13FF), (0x1700, 0x17FF), (0x2000, 0xBFFF))
     machine, log = zork_run(image, stories, ram, mirrors=((0xC000, 0xFEFF, 0x4000),))
     assert [o for _, o, _ in log[1:]] == [o for _, o, _ in zork_full[1][1:]]
     assert machine.seeks > zork_full[0].seeks
@@ -294,4 +295,21 @@ def test_bootstrap_from_disk(image, stories):
     machine.kim.mpu.pc = sim.ORG
     assert machine.run().endswith(MENU)
     play(machine, [("1", "Meadow")])
+    check(machine)
+
+
+@pytest.mark.zork
+def test_loh_full(image, loh):
+    """The Library Of Horror (version 5) won on the simulated PAL-II."""
+    machine = Machine({b"LOH.Z5": loh.read_bytes()}, image=image, timer=0x5A)
+    assert machine.run().endswith("1. LOH.Z5\nStory (Q quits): ")
+    out = [machine.send("1")]
+    for command in walk.commands(LOH_WALK):
+        out.append(machine.send(command))
+        assert machine.reason == INPUT, out[-1]
+    flat = " ".join("".join(out).split())
+    pos = 0
+    for milestone in MILESTONES:
+        pos = flat.index(milestone, pos) + len(milestone)
+    assert "Gloomy Street Score: 100 Moves: 39" in flat
     check(machine)

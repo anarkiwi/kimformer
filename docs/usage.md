@@ -101,7 +101,7 @@ simulator.
 ## Playing
 
 ```
-KIMFORMER Z-MACHINE V3
+KIMFORMER Z-MACHINE
 1. DEMO.Z3
 2. ZORK1.Z3
 Story (Q quits): 2

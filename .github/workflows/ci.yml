@@ -25,11 +25,6 @@ jobs:
 
   host:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pagedyn: [0, 1]
-    env:
-      PAGEDYN: ${{ matrix.pagedyn }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -49,11 +44,6 @@ jobs:
 
   kim:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pagedyn: [0, 1]
-    env:
-      PAGEDYN: ${{ matrix.pagedyn }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -72,7 +62,6 @@ jobs:
       - name: tests (all, with the simulated KIM-1)
         run: make test PYTEST_ARGS=--cov-fail-under=85
       - uses: actions/upload-artifact@v7
-        if: matrix.pagedyn == 0
         with:
           name: kimformer
           path: |

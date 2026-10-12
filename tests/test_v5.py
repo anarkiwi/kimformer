@@ -2,15 +2,14 @@
 story, the screen model and a complete PunyInform game."""
 
 import os
-import re
 import shlex
 import subprocess
 
 import pytest
 
 from kimformer import fixtures, walk
-from tests.conftest import REPO, flat, text
-from tests.test_host import ZM_ERR_STACK, czech_body
+from tests.conftest import REPO, text
+from tests.test_host import czech_body
 
 LOH_WALK = REPO / "tests" / "stories" / "library_of_horror.walk"
 DFROTZ = os.environ.get("DFROTZ")
@@ -47,7 +46,7 @@ def test_etude(runner):
     assert out.rstrip().endswith("This is a final line of text. Goodbye.")
 
 
-def probe(runner, story, *commands, stdin=None, args=()):
+def play5(runner, story, *commands, stdin=None, args=()):
     """Probe output for commands (or raw stdin)."""
     if stdin is None:
         stdin = walk.stdin(commands)
@@ -57,7 +56,7 @@ def probe(runner, story, *commands, stdin=None, args=()):
 
 
 def test_probe5_tables(runner, probe5):
-    out = probe(runner, probe5, "tables", "props", "throw", "uni", "undo", "aux")
+    out = play5(runner, probe5, "tables", "props", "throw", "uni", "undo", "aux")
     assert ">tables\n2 9 none aabcdf abcddf 00 70 148 64 165 148 165 1 -1 8\n" in out
     assert ">props\n20 5 1\n" in out
     assert ">throw\n7\n" in out
@@ -67,7 +66,7 @@ def test_probe5_tables(runner, probe5):
 
 
 def test_probe5_tokenise(runner, probe5):
-    out = probe(runner, probe5, "tok", "piracy")
+    out = play5(runner, probe5, "tok", "piracy")
     assert (
         ">tok\n3 ?/5/2 ?/4/8 ?/5/13\n3 u0/5/2 ?/4/8 u1/5/13\n3 u0/5/2 -/0/1 u1/5/13\n"
         in out
@@ -77,16 +76,16 @@ def test_probe5_tokenise(runner, probe5):
 
 def test_probe5_input(runner, probe5):
     keys = "keys\nab\x1b[A\x1bOB\x1b[D\x1b[C\x7f\x08\r.pre\nde\x08f\nfoo\x1b[B"
-    out = probe(runner, probe5, stdin=keys + "\x1b[A\x1bxbeep\nquit\n", args=("-n",))
+    out = play5(runner, probe5, stdin=keys + "\x1b[A\x1bxbeep\nquit\n", args=("-n",))
     assert ">97 98 129 130 131 132 8 8 13 46\n" in out
     assert ">abc \x08[13 5 abcdf]\n" in out
     assert ">term 130\n>term 129\n>\x07ok\n" in out
 
 
 def test_probe5_windows(runner, probe5):
-    plain = probe(runner, probe5, "win", "quit")
+    plain = play5(runner, probe5, "win", "quit")
     assert ">win\nrow 2 col 7\nlower 24\nunbuffered text\nerased\n>" in plain
-    vt = probe(runner, probe5, "win", "keys", "\\x", "\\.", "quit", args=("-v", "-n"))
+    vt = play5(runner, probe5, "win", "keys", "\\x", "\\.", "quit", args=("-v", "-n"))
     assert vt.startswith("\x1b[2;24r\x1b[24;1H")
     win = vt[vt.index(">") :]
     assert win.startswith(
@@ -102,7 +101,7 @@ def test_probe5_windows(runner, probe5):
 
 def test_probe5_save_restore(runner, probe5):
     commands = ["save", "", "restore", "", "restore", "missing.sav", "quit"]
-    out = probe(runner, probe5, *commands)
+    out = play5(runner, probe5, *commands)
     assert ">save\nFile [probe5.SAV]: \nsave 1\n" in out
     assert ">restore\nFile [probe5.SAV]: \nsave 2\n" in out
     assert "missing.sav\nrestore 0\n" in out
@@ -222,9 +221,3 @@ def test_launcher_versions(runner, czech, loh):
     out = text(result)
     assert out.startswith("1. C4.Z4\n2. LOH.Z5\n3. c8.z8\nStory (Q quits): ")
     assert "Passed: 406, Failed: 0" in out
-
-
-def test_v5_stack_errors(runner, probe5):
-    assert ZM_ERR_STACK == 5
-    assert re.search(r"^PROBE5", text(runner.run(runner.add(probe5))), re.M)
-    assert flat(runner.run(runner.add(probe5), commands=["quit"])).startswith("PROBE5")

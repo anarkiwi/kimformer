@@ -23,6 +23,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: make demo-check
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - uses: actions/cache@v6
+        with:
+          path: tests/fixtures/cache
+          key: fixtures-${{ hashFiles('kimformer/fixtures.py') }}
+      - run: make fixtures cov
+      - name: v5 transcripts against dfrotz
+        env:
+          DFROTZ: docker run --rm -i -v /tmp:/tmp -v ${{ github.workspace }}:${{ github.workspace }} kimformer-tools dfrotz
+        run: make test PYTEST_ARGS="tests/test_v5.py -k dfrotz --no-cov"
       - uses: actions/upload-artifact@v7
         with:
           name: demo

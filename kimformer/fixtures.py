@@ -196,6 +196,7 @@ def library_of_horror(cache=CACHE):
         return out
     root = cache / f"PunyInform-{PUNY_VERSION}"
     if not root.exists():
+        cache.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=cache) as tmp:
             with tarfile.open(fetch(f"PunyInform-{PUNY_VERSION}.tar.gz", cache)) as tar:
                 tar.extractall(tmp, filter="data")

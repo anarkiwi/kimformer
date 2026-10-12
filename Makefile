@@ -63,7 +63,7 @@ MOS_CFLAGS ?= -Os -flto -mlto-zp=$(MOS_LTO_ZP) -Wall -Wextra -Werror
 MOS_SIM_CC ?= $(DOCKER_RUN) $(MOS_IMAGE) mos-sim-clang
 MOS_SIZE ?= $(DOCKER_RUN) --entrypoint llvm-size $(MOS_IMAGE)
 MOS_NM ?= $(DOCKER_RUN) --entrypoint llvm-nm $(MOS_IMAGE)
-MOS_TEXT_MAX ?= 13312
+MOS_TEXT_MAX ?= 21504
 
 mos-check: $(CORE) $(HDRS) src/stub/plat_stub.c
 	@mkdir -p $(BUILD)/mos

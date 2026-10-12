@@ -28,7 +28,7 @@ include = ["kimformer*"]
 [tool.pytest.ini_options]
 addopts = "-n auto --cov=kimformer --cov-report=term-missing"
 testpaths = ["tests"]
-markers = ["zork: Zork I on the simulated KIM-1 (slow; deselect with -m 'not zork')"]
+markers = ["zork: full games on the simulated KIM-1 (slow; deselect with -m 'not zork')"]
 
 [tool.black]
 line-length = 88
