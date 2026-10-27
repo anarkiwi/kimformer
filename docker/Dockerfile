@@ -1,4 +1,4 @@
-FROM debian:trixie-20261005-slim AS builder
+FROM debian:trixie-20261020-slim AS builder
 ARG INFORM6_VERSION=6.43
 ARG FROTZ_VERSION=2.55
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,5 +11,5 @@ RUN curl -fsSL https://gitlab.com/DavidGriffith/frotz/-/archive/${FROTZ_VERSION}
     && make -C frotz-${FROTZ_VERSION} -j"$(nproc)" dumb \
     && install -s frotz-${FROTZ_VERSION}/dfrotz /usr/local/bin/dfrotz
 
-FROM debian:trixie-20261005-slim
+FROM debian:trixie-20261020-slim
 COPY --from=builder /usr/local/bin/inform6 /usr/local/bin/dfrotz /usr/local/bin/
