@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Z-machine (versions 3, 4, 5 and 8) for the KIM-1, PAL-II and replicas"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "anarkiwi" }]
 dependencies = ["kimdos>=0.2.0", "kimtape>=0.1.1", "tqdm"]
 
@@ -32,7 +32,7 @@ markers = ["zork: full games on the simulated KIM-1 (slow; deselect with -m 'not
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py312"]
 
 [tool.pylint.format]
 max-line-length = 88
