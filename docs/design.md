@@ -260,7 +260,7 @@ that.
 | `tests/test_zork_full.py` | a complete winning Zork I game |
 | `tests/test_v5.py` | host build, versions 4, 5 and 8: CZECH (v4, v5, v8), praxix, TerpEtude, the v5 probe story (tables, tokenise, keys, preloaded input, windows and their VT100 output, saves), the demo for v5, a complete winning game of The Library Of Horror (memory sizes, VT100, save/restore), and, with `DFROTZ` set, the v5 demo and The Library Of Horror against dfrotz |
 | `tests/test_fixtures.py` | fixture download, verification and Inform compilation |
-| `tests/test_kim.py` | 6502 build on the KIMDOS py65 simulator (PAL-II RAM map) with the sd2iec drive model: launcher, re-run without reload, no drive, DOS errors, too little RAM, demo walkthrough, Zork I opening with save/restore and status lines, restore in a fresh session, a small-RAM run that evicts, RAM mirrored through an undecoded address line, the simulator CLI, cycle meter, profiler and benchmark, a winning game of The Library Of Horror |
+| `tests/test_kim.py` | 6502 build on the KIMDOS jennings simulator (PAL-II RAM map) with the sd2iec drive model: launcher, re-run without reload, no drive, DOS errors, too little RAM, demo walkthrough, Zork I opening with save/restore and status lines, restore in a fresh session, a small-RAM run that evicts, RAM mirrored through an undecoded address line, the simulator CLI, cycle meter, profiler and benchmark, a winning game of The Library Of Horror |
 
 Fixtures that are not ours are downloaded once into `tests/fixtures/cache/`
 (gitignored) and checked against pinned SHA-256 digests; none is committed:

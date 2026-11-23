@@ -97,7 +97,7 @@ allocator.
 ## KIM-1 simulator
 
 `kimformer.sim.Machine` is a PAL-II (RAM $0000-$13FF and $2000-$FEFF, writes
-elsewhere ignored, RAM initially random) from the KIMDOS py65 simulator,
+elsewhere ignored, RAM initially random) from the KIMDOS jennings simulator,
 running `build/kimformer.bin` from $2000 with an sd2iec model as device 8
 holding the given files under their upper-case names. `run()` and
 `send(line)` run until input is awaited and return the output with the

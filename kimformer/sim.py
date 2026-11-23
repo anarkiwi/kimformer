@@ -1,4 +1,4 @@
-"""kimformer on a simulated PAL-II: the KIMDOS py65 KIM-1 with an sd2iec model.
+"""kimformer on a simulated PAL-II: the KIMDOS jennings KIM-1 with an sd2iec model.
 
 ``python -m kimformer.sim [--dir DIR] [story...]`` plays interactively.
 """
